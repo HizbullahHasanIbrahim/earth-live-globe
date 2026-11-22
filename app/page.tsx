@@ -54,7 +54,7 @@ export default function Home() {
 
   const [, startTransition] = useTransition();
 
-  // Desktop auto-open feed
+  // Desktop auto-open feed & Overlap prevention
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) {
@@ -65,9 +65,8 @@ export default function Home() {
     };
     
     handleResize();
-    const resizeHandler = () => handleResize();
-    window.addEventListener('resize', resizeHandler);
-    return () => window.removeEventListener('resize', resizeHandler);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Filtered Data
@@ -86,16 +85,26 @@ export default function Home() {
     setTimeout(() => setIsRefreshing(false), 800);
   }, []);
 
-  // Polling ISS
+  // Polling ISS (Paused when document is hidden to conserve resources)
   useEffect(() => {
     const poll = async () => {
+      if (document.hidden) return;
       const { data, isFallback } = await fetchIssTelemetry();
       setIss(data);
       setIsIssFallback(isFallback);
     };
-    poll();
+
     const interval = setInterval(poll, 5000);
-    return () => clearInterval(interval);
+
+    const handleVisibility = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   // Initial Fetch
@@ -181,8 +190,7 @@ export default function Home() {
         iss={iss}
         onSelectEntity={(entity) => {
           setSelectedEntity(entity);
-          // Auto close feed on mobile when entity selected to see globe
-          if (window.innerWidth <= 768) setIsFeedOpen(false);
+          if (window.innerWidth < 1024) setIsFeedOpen(false);
         }}
         selectedEntity={selectedEntity}
       />

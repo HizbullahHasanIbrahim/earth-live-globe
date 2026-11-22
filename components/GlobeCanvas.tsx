@@ -30,8 +30,10 @@ export interface GlobeCanvasProps {
 const EARTH_RADIUS = 5.0;
 const ISS_ALTITUDE = 0.38;
 const HUB_ALTITUDE = 0.02;
+const MAX_EARTHQUAKES = 180;
+const MAX_ISS_TRAIL = 40;
 
-// Vector and object pool allocated once outside render loop
+// Reusable objects pool
 const V_UP = new THREE.Vector3(0, 1, 0);
 const V_NORMAL = new THREE.Vector3();
 const V_POS = new THREE.Vector3();
@@ -41,6 +43,9 @@ const Q_ROT = new THREE.Quaternion();
 const M_TRANSFORM = new THREE.Matrix4();
 const C_COLOR = new THREE.Color();
 const RAY_MOUSE = new THREE.Vector2();
+
+// ISS Trail object pool to avoid GC thrashing
+const ISS_TRAIL_POOL = Array.from({ length: MAX_ISS_TRAIL }, () => new THREE.Vector3());
 
 function getMagnitudeColor(mag: number, outColor: THREE.Color): THREE.Color {
   if (mag < 4.5) {
@@ -195,15 +200,31 @@ export default function GlobeCanvas({
     scene.add(dirLight);
     dirLightRef.current = dirLight;
 
-    // Earth Sphere
-    const earthGeo = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
+    // Earth Sphere with smooth initial color (Anti-flash)
+    const isDarkInitial = themeRef.current === "dark";
+    const earthGeo = new THREE.SphereGeometry(EARTH_RADIUS, isMobile ? 48 : 64, isMobile ? 48 : 64);
     const earthMat = new THREE.MeshStandardMaterial({
+      color: isDarkInitial ? 0x061225 : 0xdbeafe,
       roughness: 0.75,
       metalness: 0.1
     });
     const globeMesh = new THREE.Mesh(earthGeo, earthMat);
     scene.add(globeMesh);
     globeMaterialRef.current = earthMat;
+
+    // Pre-allocate InstancedMesh for Earthquakes with fixed capacity (Zero-allocation re-use)
+    const pinGeo = new THREE.CylinderGeometry(0.015, 0.045, 1.0, 8);
+    pinGeo.translate(0, 0.5, 0);
+    const pinMat = new THREE.MeshStandardMaterial({
+      roughness: 0.35,
+      metalness: 0.2
+    });
+    const eqInstancedMesh = new THREE.InstancedMesh(pinGeo, pinMat, MAX_EARTHQUAKES);
+    eqInstancedMesh.count = 0;
+    eqInstancedMesh.frustumCulled = false;
+    eqInstancedMesh.visible = layersRef.current.earthquakes;
+    scene.add(eqInstancedMesh);
+    eqInstancedMeshRef.current = eqInstancedMesh;
 
     // Atmosphere Glow
     const atmosGeo = new THREE.SphereGeometry(EARTH_RADIUS * 1.05, 64, 64);
@@ -430,24 +451,53 @@ export default function GlobeCanvas({
     };
     controls.addEventListener("start", onControlsStart);
 
+    // WebGL Context Lost Handling
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      console.warn("WebGL context lost. Monitoring for restoration...");
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+    const handleContextRestored = () => {
+      console.log("WebGL context restored. Resuming...");
+      renderer.setPixelRatio(window.devicePixelRatio);
+      animate();
+    };
+
     const dom = renderer.domElement;
+    dom.addEventListener("webglcontextlost", handleContextLost, false);
+    dom.addEventListener("webglcontextrestored", handleContextRestored, false);
     dom.addEventListener("pointerdown", handlePointerDown);
     dom.addEventListener("pointerup", handlePointerUp);
     dom.addEventListener("pointercancel", handlePointerCancel);
     dom.addEventListener("pointermove", handlePointerMove);
 
-    // Resize handling
+    // Resize handling (Update pixelRatio for mobile/desktop switches)
     const handleResize = () => {
       if (!container) return;
-      camera.aspect = container.clientWidth / container.clientHeight;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth <= 768 ? 1.5 : 2.0));
     };
     window.addEventListener("resize", handleResize);
+
+    // Auto-Pause requestAnimationFrame when tab is hidden
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animationId) cancelAnimationFrame(animationId);
+      } else {
+        prevTime = performance.now(); // Reset clock to avoid jump
+        animate();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // 60 FPS Render Loop (Strict Zero-Allocation)
     let animationId: number;
     let prevTime = performance.now();
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const animate = () => {
       animationId = requestAnimationFrame(animate);
@@ -476,7 +526,8 @@ export default function GlobeCanvas({
       // Camera Fly-To Animation (Smooth exponential decay)
       if (isFlyingRef.current) {
         controls.autoRotate = false;
-        const blend = 1.0 - Math.exp(-delta * 5.0);
+        const decay = prefersReducedMotion ? 10.0 : 5.0; // Faster/Direct if reduced motion
+        const blend = 1.0 - Math.exp(-delta * decay);
         camera.position.lerp(flyTargetPosRef.current, blend);
         controls.target.lerp(flyLookTargetRef.current, blend);
 
@@ -485,7 +536,7 @@ export default function GlobeCanvas({
           isFlyingRef.current = false;
         }
       } else {
-        controls.autoRotate = selectedEntityRef.current === null;
+        controls.autoRotate = !prefersReducedMotion && selectedEntityRef.current === null;
       }
 
       controls.update();
@@ -499,8 +550,11 @@ export default function GlobeCanvas({
       active = false;
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", handleResize);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       controls.removeEventListener("start", onControlsStart);
 
+      dom.removeEventListener("webglcontextlost", handleContextLost);
+      dom.removeEventListener("webglcontextrestored", handleContextRestored);
       dom.removeEventListener("pointerdown", handlePointerDown);
       dom.removeEventListener("pointerup", handlePointerUp);
       dom.removeEventListener("pointercancel", handlePointerCancel);
@@ -619,36 +673,15 @@ export default function GlobeCanvas({
     }
   }, [layers]);
 
-  // Update Earthquakes (Layer 1 - THREE.InstancedMesh)
+  // Update Earthquakes (Layer 1 - Optimized THREE.InstancedMesh re-use)
   useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
+    const instancedMesh = eqInstancedMeshRef.current;
+    if (!instancedMesh) return;
 
-    // Dispose previous earthquake mesh
-    if (eqInstancedMeshRef.current) {
-      scene.remove(eqInstancedMeshRef.current);
-      eqInstancedMeshRef.current.geometry.dispose();
-      (eqInstancedMeshRef.current.material as THREE.Material).dispose();
-      eqInstancedMeshRef.current = null;
-    }
-
-    const count = earthquakes.length;
+    const count = Math.min(earthquakes.length, MAX_EARTHQUAKES);
+    instancedMesh.count = count;
+    
     if (count === 0) return;
-
-    // Thin cylinder/pin geometry perpendicular to surface
-    // Cylinder centered at y=0, radius=0.035, height=1.0
-    const pinGeo = new THREE.CylinderGeometry(0.015, 0.045, 1.0, 8);
-    // Offset geometry so base is at y=0 and tip extends along +y
-    pinGeo.translate(0, 0.5, 0);
-
-    const pinMat = new THREE.MeshStandardMaterial({
-      roughness: 0.35,
-      metalness: 0.2
-    });
-
-    const instancedMesh = new THREE.InstancedMesh(pinGeo, pinMat, count);
-    instancedMesh.frustumCulled = false;
-    instancedMesh.visible = layersRef.current.earthquakes;
 
     for (let i = 0; i < count; i++) {
       const eq = earthquakes[i];
@@ -656,7 +689,7 @@ export default function GlobeCanvas({
       latLonToVector3(eq.lat, eq.lon, EARTH_RADIUS, V_POS);
       V_NORMAL.copy(V_POS).normalize();
 
-      // Pin height proportional to magnitude: e.g. mag 4 -> 0.2, mag 7 -> 0.7
+      // Pin height proportional to magnitude
       const height = Math.max(0.12, (eq.mag - 2.5) * 0.16);
       const radiusScale = Math.max(0.7, eq.mag * 0.25);
 
@@ -674,9 +707,6 @@ export default function GlobeCanvas({
     if (instancedMesh.instanceColor) {
       instancedMesh.instanceColor.needsUpdate = true;
     }
-
-    scene.add(instancedMesh);
-    eqInstancedMeshRef.current = instancedMesh;
   }, [earthquakes]);
 
   // Update Hubs & Routes (Layer 3)
@@ -800,11 +830,17 @@ export default function GlobeCanvas({
     latLonToVector3(iss.latitude, iss.longitude, EARTH_RADIUS + ISS_ALTITUDE, V_POS);
     issTargetPosRef.current.copy(V_POS);
 
-    // Append to trail history (max 40 points)
+    // Update trail history (Zero-allocation using pool)
     const trail = issTrailPositionsRef.current;
-    trail.push(V_POS.clone());
-    if (trail.length > 40) {
-      trail.shift();
+    if (trail.length < MAX_ISS_TRAIL) {
+      trail.push(ISS_TRAIL_POOL[trail.length].copy(V_POS));
+    } else {
+      // Shift array manually and reuse first object for last position
+      const first = trail.shift();
+      if (first) {
+        first.copy(V_POS);
+        trail.push(first);
+      }
     }
 
     // Update trail geometry buffer

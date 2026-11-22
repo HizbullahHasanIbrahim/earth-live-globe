@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -21,8 +21,25 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Earth Live Globe — Interactive 3D Geospatial Visualizer",
-  description: "Real-time 3D Earth visualization featuring live earthquakes, ISS tracking, and global connectivity routes with Apple Fluid Glass UI.",
+  title: "Earth Live — 3D Visualizer",
+  description: "Real-time 3D Earth visualization featuring live earthquakes, ISS tracking, and global connectivity routes.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Earth Live",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#030712" },
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+  ],
 };
 
 export default function RootLayout({
