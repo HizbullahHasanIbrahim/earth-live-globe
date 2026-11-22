@@ -75,6 +75,10 @@ export default function Home() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
   // Sync "now" for relative timestamps (60s update)
   useEffect(() => {
     const initialTimer = setTimeout(() => setNow(Date.now()), 0);

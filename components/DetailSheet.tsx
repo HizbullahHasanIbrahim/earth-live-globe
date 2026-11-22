@@ -40,6 +40,13 @@ export default function DetailSheet({
     return "Sangat Kuat";
   };
 
+  const getMagBadgeStyle = (mag: number) => {
+    if (mag < 4.5) return { backgroundColor: "rgba(34, 197, 94, 0.2)", color: "#22c55e", borderColor: "rgba(34, 197, 94, 0.4)" };
+    if (mag < 5.5) return { backgroundColor: "var(--mag-amber-bg)", color: "var(--mag-amber-text)", borderColor: "var(--mag-amber-border)" };
+    if (mag < 6.0) return { backgroundColor: "rgba(249, 115, 22, 0.2)", color: "#f97316", borderColor: "rgba(249, 115, 22, 0.4)" };
+    return { backgroundColor: "rgba(239, 68, 68, 0.2)", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)" };
+  };
+
   const getMagColor = (mag: number) => {
     if (mag < 4.5) return "text-emerald-500";
     if (mag < 5.5) return "text-[var(--mag-amber-text)]";
@@ -96,7 +103,7 @@ export default function DetailSheet({
           {isEq && (
             <>
               <div className="flex items-center gap-4 p-4 rounded-2xl bg-[var(--glass-hover)] border border-[var(--border-glass)]">
-                <div className={`text-3xl font-display font-bold ${getMagColor(selectedEntity.data.mag)}`}>
+                <div className="text-3xl font-display font-bold" style={getMagBadgeStyle(selectedEntity.data.mag)}>
                   {selectedEntity.data.mag.toFixed(1)}
                 </div>
                 <div>

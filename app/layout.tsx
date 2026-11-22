@@ -51,6 +51,7 @@ export default function RootLayout({
     <html lang="id" data-theme="dark" suppressHydrationWarning>
       <head>
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               try {
@@ -62,7 +63,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${jakarta.variable} ${spaceGrotesk.variable} ${mono.variable} font-sans antialiased bg-[var(--bg-canvas)] text-[var(--text-primary)] overflow-hidden selection:bg-[var(--accent-primary)] selection:text-white`}>
+      <body suppressHydrationWarning className={`${jakarta.variable} ${spaceGrotesk.variable} ${mono.variable} font-sans antialiased bg-[var(--bg-canvas)] text-[var(--text-primary)] overflow-hidden selection:bg-[var(--accent-primary)] selection:text-white`}>
         {children}
       </body>
     </html>

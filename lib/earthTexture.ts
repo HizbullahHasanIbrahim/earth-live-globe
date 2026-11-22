@@ -45,13 +45,13 @@ export async function generateEarthTexture(theme: "dark" | "light"): Promise<THR
   // 1. Gradien Latar Lautan
   const oceanGradient = ctx.createLinearGradient(0, 0, 0, height);
   if (isDark) {
-    oceanGradient.addColorStop(0, "#03060f");
-    oceanGradient.addColorStop(0.5, "#061225");
-    oceanGradient.addColorStop(1, "#0a1930");
+    oceanGradient.addColorStop(0, "#07152a");
+    oceanGradient.addColorStop(0.5, "#091b35");
+    oceanGradient.addColorStop(1, "#0c2240");
   } else {
-    oceanGradient.addColorStop(0, "#f0f6ff");
-    oceanGradient.addColorStop(0.5, "#dbeafe");
-    oceanGradient.addColorStop(1, "#bfdbfe");
+    oceanGradient.addColorStop(0, "#e0eeff");
+    oceanGradient.addColorStop(0.5, "#cfe4ff");
+    oceanGradient.addColorStop(1, "#b5d5ff");
   }
   ctx.fillStyle = oceanGradient;
   ctx.fillRect(0, 0, width, height);
@@ -59,7 +59,7 @@ export async function generateEarthTexture(theme: "dark" | "light"): Promise<THR
   // 2. Graticule (Garis Lintang & Bujur Halus)
   ctx.beginPath();
   ctx.lineWidth = isMobile ? 0.5 : 0.75;
-  ctx.strokeStyle = isDark ? "rgba(56, 189, 248, 0.10)" : "rgba(148, 163, 184, 0.18)";
+  ctx.strokeStyle = isDark ? "rgba(56, 189, 248, 0.12)" : "rgba(100, 116, 139, 0.16)";
 
   const degToX = (lon: number) => ((lon + 180) / 360) * width;
   const degToY = (lat: number) => ((90 - lat) / 180) * height;
@@ -84,8 +84,8 @@ export async function generateEarthTexture(theme: "dark" | "light"): Promise<THR
     topology.objects.countries
   ) as unknown as { features: CountryFeature[] };
 
-  ctx.fillStyle = isDark ? "#17253b" : "#eef2f7";
-  ctx.strokeStyle = isDark ? "rgba(56, 189, 248, 0.35)" : "#94a3b8";
+  ctx.fillStyle = isDark ? "#1d3454" : "#f8fafc";
+  ctx.strokeStyle = isDark ? "rgba(56, 189, 248, 0.55)" : "#64748b";
   ctx.lineWidth = isMobile ? 0.5 : 0.85;
 
   const drawRing = (ring: number[][]) => {

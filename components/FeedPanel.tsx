@@ -37,11 +37,11 @@ const getTimeAgo = (timestamp: number, currentTime: number | null) => {
   return `${Math.floor(hours / 24)} hari lalu`;
 };
 
-const getMagBadgeClass = (mag: number) => {
-  if (mag < 4.5) return "bg-emerald-500/20 text-emerald-500 border-emerald-500/20";
-  if (mag < 5.5) return "bg-[var(--mag-amber-bg)] text-[var(--mag-amber-text)] border-[var(--mag-amber-border)]";
-  if (mag < 6.0) return "bg-orange-500/20 text-orange-500 border-orange-500/20";
-  return "bg-red-500/20 text-red-500 border-red-500/20";
+const getMagBadgeStyle = (mag: number) => {
+  if (mag < 4.5) return { backgroundColor: "rgba(34, 197, 94, 0.2)", color: "#22c55e", borderColor: "rgba(34, 197, 94, 0.4)" };
+  if (mag < 5.5) return { backgroundColor: "var(--mag-amber-bg)", color: "var(--mag-amber-text)", borderColor: "var(--mag-amber-border)" };
+  if (mag < 6.0) return { backgroundColor: "rgba(249, 115, 22, 0.2)", color: "#f97316", borderColor: "rgba(249, 115, 22, 0.4)" };
+  return { backgroundColor: "rgba(239, 68, 68, 0.2)", color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)" };
 };
 
 export default function FeedPanel({
@@ -112,8 +112,8 @@ export default function FeedPanel({
       </div>
 
       {/* Main Earthquake List */}
-      <div className="flex-1 flex col min-h-0 p-2 rounded-3xl fluid-glass-elevated shadow-2xl border border-[var(--border-glass)]">
-        <div className="flex items-center justify-between border-b border-[var(--border-glass)] p-4">
+      <div className="flex-1 flex flex-col min-h-0 p-2 rounded-3xl fluid-glass-elevated shadow-2xl border border-[var(--border-glass)]">
+        <div className="flex items-center justify-between border-b border-[var(--border-glass)] p-4 shrink-0">
           <h3 className="text-xs font-bold text-[var(--text-primary)]">Aktivitas Gempa</h3>
           <span className="text-[10px] font-mono tabular-nums text-[var(--text-secondary)] uppercase tracking-wider">TERBARU</span>
         </div>
@@ -126,13 +126,13 @@ export default function FeedPanel({
                 onClick={() => onSelectEntity({ type: "earthquake", data: eq })}
                 className={`flex items-center gap-3 w-full p-2.5 rounded-xl transition-all duration-300 text-left hover:bg-[var(--glass-hover)] group ${selectedEntity?.type === "earthquake" && selectedEntity.data.id === eq.id ? 'bg-[var(--glass-active)] ring-1 ring-[var(--accent-primary)]' : ''}`}
               >
-                <div className={`flex items-center justify-center min-w-[42px] h-[42px] rounded-lg border font-display font-bold transition-transform group-hover:scale-105 ${getMagBadgeClass(eq.mag)}`}>
+                <div className="flex items-center justify-center min-w-[42px] h-[42px] rounded-lg border font-display font-bold transition-transform group-hover:scale-105" style={getMagBadgeStyle(eq.mag)}>
                   <span className="text-sm">{eq.mag.toFixed(1)}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="text-[11px] font-bold text-[var(--text-primary)] truncate leading-tight mb-0.5">{eq.place}</h4>
                   <div className="flex items-center gap-2 text-[10px] text-[var(--text-secondary)] font-medium">
-                    <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {eq.depth}km</span>
+                    <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {eq.depth.toFixed(1)} km</span>
                     <span>•</span>
                     <span>{getTimeAgo(eq.time, currentTime)}</span>
                   </div>

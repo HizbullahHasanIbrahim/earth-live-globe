@@ -123,7 +123,10 @@ export default function GlobeCanvas({
   const globeMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const atmosphereMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
   const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+  const hemiLightRef = useRef<THREE.HemisphereLight | null>(null);
   const dirLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const rimLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const starFieldRef = useRef<THREE.Points | null>(null);
 
   // Layer meshes & groups
   const eqInstancedMeshRef = useRef<THREE.InstancedMesh | null>(null);
@@ -191,14 +194,27 @@ export default function GlobeCanvas({
 
     // Lighting
     const isDark = themeRef.current === "dark";
-    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.9 : 1.3);
+    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 1.15 : 1.65);
     scene.add(ambientLight);
     ambientLightRef.current = ambientLight;
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, isDark ? 1.6 : 2.1);
-    dirLight.position.set(12, 10, 10);
+    const hemiLight = new THREE.HemisphereLight(
+      isDark ? 0x7dd3fc : 0xffffff,
+      isDark ? 0x0f172a : 0xcbd5e1,
+      isDark ? 0.55 : 0.85
+    );
+    scene.add(hemiLight);
+    hemiLightRef.current = hemiLight;
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, isDark ? 1.2 : 1.1);
+    dirLight.position.set(12, 8, 12);
     scene.add(dirLight);
     dirLightRef.current = dirLight;
+
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.35);
+    rimLight.position.set(-10, -4, -10);
+    scene.add(rimLight);
+    rimLightRef.current = rimLight;
 
     // Earth Sphere with smooth initial color (Anti-flash)
     const isDarkInitial = themeRef.current === "dark";
@@ -213,7 +229,7 @@ export default function GlobeCanvas({
     globeMaterialRef.current = earthMat;
 
     // Pre-allocate InstancedMesh for Earthquakes with fixed capacity (Zero-allocation re-use)
-    const pinGeo = new THREE.CylinderGeometry(0.015, 0.045, 1.0, 8);
+    const pinGeo = new THREE.CylinderGeometry(0.025, 0.055, 1.0, 10);
     pinGeo.translate(0, 0.5, 0);
     const pinMat = new THREE.MeshStandardMaterial({
       roughness: 0.35,
@@ -233,7 +249,8 @@ export default function GlobeCanvas({
       transparent: true,
       blending: isDark ? THREE.AdditiveBlending : THREE.NormalBlending,
       uniforms: {
-        glowColor: { value: new THREE.Color(isDark ? 0x38bdf8 : 0x60a5fa) }
+        glowColor: { value: new THREE.Color(isDark ? 0x38bdf8 : 0x3b82f6) },
+        uOpacity: { value: isDark ? 0.85 : 0.45 }
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -245,9 +262,11 @@ export default function GlobeCanvas({
       fragmentShader: `
         varying vec3 vNormal;
         uniform vec3 glowColor;
+        uniform float uOpacity;
         void main() {
-          float intensity = pow(clamp(-dot(vNormal, vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 3.2);
-          gl_FragColor = vec4(glowColor, intensity * 0.72);
+          float rim = clamp(-dot(normalize(vNormal), vec3(0.0, 0.0, 1.0)), 0.0, 1.0);
+          float glow = smoothstep(0.0, 0.45, rim) * pow(rim, 1.15);
+          gl_FragColor = vec4(glowColor, glow * uOpacity);
         }
       `
     });
@@ -255,36 +274,64 @@ export default function GlobeCanvas({
     scene.add(atmosphereMesh);
     atmosphereMaterialRef.current = atmosMat;
 
-    // Starfield for Dark Mode
+    // Starfield for Dark Mode (Smooth circular points)
     const starCount = 1200;
     const starGeo = new THREE.BufferGeometry();
     const starPos = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i += 3) {
+    const starAlpha = new Float32Array(starCount);
+    for (let i = 0; i < starCount; i++) {
       const radius = 80 + Math.random() * 80;
       const u = Math.random();
       const v = Math.random();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
-      starPos[i] = radius * Math.sin(phi) * Math.cos(theta);
-      starPos[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
-      starPos[i + 2] = radius * Math.cos(phi);
+      starPos[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      starPos[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+      starPos[i * 3 + 2] = radius * Math.cos(phi);
+      starAlpha[i] = 0.3 + Math.random() * 0.7;
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    const starMat = new THREE.PointsMaterial({
-      color: 0x93c5fd,
-      size: 0.8,
+    starGeo.setAttribute("aAlpha", new THREE.BufferAttribute(starAlpha, 1));
+
+    const starMat = new THREE.ShaderMaterial({
       transparent: true,
-      opacity: isDark ? 0.6 : 0.0,
-      depthWrite: false
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uOpacity: { value: isDark ? 0.85 : 0.0 }
+      },
+      vertexShader: `
+        attribute float aAlpha;
+        varying float vAlpha;
+        void main() {
+          vAlpha = aAlpha;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = (1.5 + aAlpha * 1.5) * (300.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying float vAlpha;
+        void main() {
+          float d = length(gl_PointCoord - vec2(0.5));
+          if (d > 0.5) discard;
+          float alpha = smoothstep(0.5, 0.08, d) * vAlpha * uOpacity;
+          gl_FragColor = vec4(vec3(0.75, 0.85, 1.0), alpha);
+        }
+      `
     });
     const starField = new THREE.Points(starGeo, starMat);
+    starField.visible = isDark;
     scene.add(starField);
+    starFieldRef.current = starField;
 
     // Initial Earth Texture Generation
     let active = true;
     generateEarthTexture(themeRef.current).then((tex) => {
       if (active && globeMaterialRef.current) {
         globeMaterialRef.current.map = tex;
+        globeMaterialRef.current.color.setHex(0xffffff);
         globeMaterialRef.current.needsUpdate = true;
       } else {
         disposeEarthTexture(tex);
@@ -573,6 +620,12 @@ export default function GlobeCanvas({
       starGeo.dispose();
       starMat.dispose();
 
+      // Dispose lights
+      ambientLightRef.current?.dispose();
+      hemiLightRef.current?.dispose();
+      dirLightRef.current?.dispose();
+      rimLightRef.current?.dispose();
+
       // Dispose ISS
       issCoreGeo.dispose();
       issCoreMat.dispose();
@@ -608,24 +661,37 @@ export default function GlobeCanvas({
     const isDark = theme === "dark";
 
     if (ambientLightRef.current) {
-      ambientLightRef.current.intensity = isDark ? 0.9 : 1.3;
+      ambientLightRef.current.intensity = isDark ? 1.15 : 1.65;
+    }
+    if (hemiLightRef.current) {
+      hemiLightRef.current.color.setHex(isDark ? 0x7dd3fc : 0xffffff);
+      hemiLightRef.current.groundColor.setHex(isDark ? 0x0f172a : 0xcbd5e1);
+      hemiLightRef.current.intensity = isDark ? 0.55 : 0.85;
     }
     if (dirLightRef.current) {
-      dirLightRef.current.intensity = isDark ? 1.6 : 2.1;
+      dirLightRef.current.intensity = isDark ? 1.2 : 1.1;
+    }
+    if (rimLightRef.current) {
+      rimLightRef.current.intensity = 0.35;
     }
     if (atmosphereMaterialRef.current) {
       atmosphereMaterialRef.current.blending = isDark
         ? THREE.AdditiveBlending
         : THREE.NormalBlending;
       atmosphereMaterialRef.current.uniforms.glowColor.value.setHex(
-        isDark ? 0x38bdf8 : 0x60a5fa
+        isDark ? 0x38bdf8 : 0x3b82f6
       );
+      atmosphereMaterialRef.current.uniforms.uOpacity.value = isDark ? 0.85 : 0.45;
     }
     if (issTrailLineRef.current) {
       (issTrailLineRef.current.material as THREE.LineBasicMaterial).color.setHex(
         isDark ? 0x38bdf8 : 0x2563eb
       );
       (issTrailLineRef.current.material as THREE.LineBasicMaterial).opacity = isDark ? 0.65 : 0.85;
+    }
+    if (starFieldRef.current) {
+      starFieldRef.current.visible = isDark;
+      (starFieldRef.current.material as THREE.ShaderMaterial).uniforms.uOpacity.value = isDark ? 0.85 : 0.0;
     }
 
     // Update Arc route shaders
@@ -644,6 +710,7 @@ export default function GlobeCanvas({
           disposeEarthTexture(globeMaterialRef.current.map);
         }
         globeMaterialRef.current.map = newTex;
+        globeMaterialRef.current.color.setHex(0xffffff);
         globeMaterialRef.current.needsUpdate = true;
       } else {
         disposeEarthTexture(newTex);
