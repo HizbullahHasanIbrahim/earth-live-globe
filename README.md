@@ -116,7 +116,7 @@ earth-live-globe/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/earth-live-globe.git
+   git clone https://github.com/HizbullahHasanIbrahim/earth-live-globe.git
    cd earth-live-globe
    ```
 
