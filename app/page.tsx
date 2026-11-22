@@ -44,6 +44,8 @@ export default function Home() {
   const [magFilter, setMagFilter] = useState<MagnitudeFilter>("all");
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null);
   const [now, setNow] = useState<number | null>(null);
+  const [autoRotate, setAutoRotate] = useState(true);
+  const [isFollowingIss, setIsFollowingIss] = useState(false);
 
   // Data State
   const [earthquakes, setEarthquakes] = useState<EarthquakeEvent[]>([]);
@@ -60,19 +62,14 @@ export default function Home() {
 
   const [, startTransition] = useTransition();
 
-  // Desktop auto-open feed
+  // Inisialisasi status buka panel feed pada desktop saat pertama kali dimuat
   useEffect(() => {
-    const handleResize = () => {
+    const timer = setTimeout(() => {
       if (window.innerWidth > 768) {
         setIsFeedOpen(true);
-      } else {
-        setIsFeedOpen(false);
       }
-    };
-    
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -105,13 +102,19 @@ export default function Home() {
     setTimeout(() => setIsRefreshing(false), 800);
   }, []);
 
-  // Polling ISS
+  // Polling ISS (hanya jika layer ISS aktif dan tab browser terlihat sesuai PRD 3.3)
   useEffect(() => {
     const poll = async () => {
-      if (document.hidden) return;
+      if (document.hidden || !layers.iss) return;
       const { data, isFallback } = await fetchIssTelemetry();
       setIss(data);
       setIsIssFallback(isFallback);
+      setSelectedEntity(prev => {
+        if (prev?.type === "iss") {
+          return { type: "iss", data };
+        }
+        return prev;
+      });
     };
 
     poll();
@@ -119,7 +122,7 @@ export default function Home() {
     return () => {
       clearInterval(interval);
     };
-  }, []);
+  }, [layers.iss]);
 
   // Initial Fetch
   useEffect(() => {
@@ -129,7 +132,7 @@ export default function Home() {
     fetch();
   }, [refreshData]);
 
-  // Keyboard Shortcuts
+  // Keyboard Shortcuts (Esc, R, Space, /)
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === "INPUT") return;
@@ -137,9 +140,18 @@ export default function Home() {
       if (e.key === "Escape") {
         setSelectedEntity(null);
         setIsFeedOpen(false);
+        setIsFollowingIss(false);
       } else if (e.key.toLowerCase() === "r") {
         setResetViewSignal(s => s + 1);
         setSelectedEntity(null);
+        setIsFollowingIss(false);
+      } else if (e.code === "Space" || e.key === " ") {
+        e.preventDefault();
+        setAutoRotate(prev => !prev);
+      } else if (e.key === "/") {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement | null;
+        searchInput?.focus();
       }
     };
     window.addEventListener("keydown", handleKey);
@@ -159,6 +171,9 @@ export default function Home() {
 
   const handleSelectEntity = useCallback((entity: SelectedEntity) => {
     setSelectedEntity(entity);
+    if (entity?.type !== "iss") {
+      setIsFollowingIss(false);
+    }
     // Tutup feed pada layar sempit agar panel tidak menumpuk
     if (entity && window.innerWidth < 1024) setIsFeedOpen(false);
   }, []);
@@ -179,6 +194,9 @@ export default function Home() {
         selectedEntity={selectedEntity}
         onSelectEntity={handleSelectEntity}
         resetViewSignal={resetViewSignal}
+        autoRotate={autoRotate}
+        isFollowingIss={isFollowingIss}
+        onToggleFollowIss={setIsFollowingIss}
       />
 
       <TopCapsule 
@@ -189,6 +207,7 @@ export default function Home() {
         onResetView={() => {
           setResetViewSignal(s => s + 1);
           setSelectedEntity(null);
+          setIsFollowingIss(false);
         }}
         isFeedOpen={isFeedOpen}
         toggleFeed={() => setIsFeedOpen(!isFeedOpen)}
@@ -202,6 +221,7 @@ export default function Home() {
 
       <FeedPanel 
         isOpen={isFeedOpen}
+        onClose={() => setIsFeedOpen(false)}
         earthquakes={earthquakes}
         magFilter={magFilter}
         setMagFilter={setMagFilter}
@@ -215,12 +235,19 @@ export default function Home() {
         layers={layers}
         toggleLayer={toggleLayer}
         selectedEntity={selectedEntity}
+        autoRotate={autoRotate}
+        onToggleAutoRotate={() => setAutoRotate(prev => !prev)}
       />
 
       <DetailSheet 
         selectedEntity={selectedEntity}
-        onClose={() => setSelectedEntity(null)}
+        onClose={() => {
+          setSelectedEntity(null);
+          setIsFollowingIss(false);
+        }}
         onSelectEntity={handleSelectEntity}
+        isFollowingIss={isFollowingIss}
+        onToggleFollowIss={setIsFollowingIss}
       />
 
       {/* Screen reader / Accessibility helpers */}

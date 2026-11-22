@@ -25,6 +25,9 @@ export interface GlobeCanvasProps {
   selectedEntity: SelectedEntity;
   onSelectEntity: (entity: SelectedEntity) => void;
   resetViewSignal?: number;
+  autoRotate?: boolean;
+  isFollowingIss?: boolean;
+  onToggleFollowIss?: (following: boolean) => void;
 }
 
 const EARTH_RADIUS = 5.0;
@@ -92,7 +95,10 @@ export default function GlobeCanvas({
   layers,
   selectedEntity,
   onSelectEntity,
-  resetViewSignal
+  resetViewSignal,
+  autoRotate = true,
+  isFollowingIss = false,
+  onToggleFollowIss
 }: GlobeCanvasProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -104,6 +110,9 @@ export default function GlobeCanvas({
   const onSelectEntityRef = useRef(onSelectEntity);
   const themeRef = useRef<ThemeMode>(theme);
   const layersRef = useRef<LayerVisibility>(layers);
+  const autoRotateRef = useRef<boolean>(autoRotate);
+  const isFollowingIssRef = useRef<boolean>(isFollowingIss);
+  const onToggleFollowIssRef = useRef(onToggleFollowIss);
 
   // Update refs safely after commit
   useEffect(() => {
@@ -114,6 +123,9 @@ export default function GlobeCanvas({
     onSelectEntityRef.current = onSelectEntity;
     themeRef.current = theme;
     layersRef.current = layers;
+    autoRotateRef.current = autoRotate;
+    isFollowingIssRef.current = isFollowingIss;
+    onToggleFollowIssRef.current = onToggleFollowIss;
   });
 
   // Scene object refs
@@ -326,17 +338,8 @@ export default function GlobeCanvas({
     scene.add(starField);
     starFieldRef.current = starField;
 
-    // Initial Earth Texture Generation
-    let active = true;
-    generateEarthTexture(themeRef.current).then((tex) => {
-      if (active && globeMaterialRef.current) {
-        globeMaterialRef.current.map = tex;
-        globeMaterialRef.current.color.setHex(0xffffff);
-        globeMaterialRef.current.needsUpdate = true;
-      } else {
-        disposeEarthTexture(tex);
-      }
-    });
+    // Tekstur awal Bumi di-handle secara tunggal oleh useEffect([theme]) di bawah
+    // untuk mencegah race condition dan pemuatan tekstur ganda saat initial mount.
 
     // Layer 2: ISS Marker Group + Orbit Trail
     const issGroup = new THREE.Group();
@@ -492,9 +495,12 @@ export default function GlobeCanvas({
       renderer.domElement.style.cursor = hits.length > 0 ? "pointer" : "default";
     };
 
-    // User drag cancels fly-to animation immediately
+    // User drag membatalkan animasi fly-to dan melepaskan kuncian ikuti ISS secara otomatis
     const onControlsStart = () => {
       isFlyingRef.current = false;
+      if (isFollowingIssRef.current && onToggleFollowIssRef.current) {
+        onToggleFollowIssRef.current(false);
+      }
     };
     controls.addEventListener("start", onControlsStart);
 
@@ -568,6 +574,16 @@ export default function GlobeCanvas({
         V_NORMAL.copy(issCurrentPosRef.current).normalize();
         Q_ROT.setFromUnitVectors(V_UP, V_NORMAL);
         issGroupRef.current.quaternion.copy(Q_ROT);
+
+        // Pelacakan real-time kamera mengunci posisi ISS saat fitur 'Ikuti ISS' aktif
+        if (isFollowingIssRef.current) {
+          isFlyingRef.current = false;
+          controls.autoRotate = false;
+          flyTargetPosRef.current.copy(V_NORMAL).multiplyScalar(EARTH_RADIUS + 5.2);
+          flyLookTargetRef.current.set(0, 0, 0);
+          camera.position.lerp(flyTargetPosRef.current, delta * 3.5);
+          controls.target.set(0, 0, 0);
+        }
       }
 
       // Camera Fly-To Animation (Smooth exponential decay)
@@ -578,12 +594,14 @@ export default function GlobeCanvas({
         camera.position.lerp(flyTargetPosRef.current, blend);
         controls.target.lerp(flyLookTargetRef.current, blend);
 
-        // End fly-to when arrived close enough
+        // Selesai fly-to saat kamera sudah tiba di dekat target
         if (camera.position.distanceTo(flyTargetPosRef.current) < 0.05) {
           isFlyingRef.current = false;
+          controls.target.copy(flyLookTargetRef.current);
         }
-      } else {
-        controls.autoRotate = !prefersReducedMotion && selectedEntityRef.current === null;
+      } else if (!isFollowingIssRef.current) {
+        // Auto-rotate aktif hanya jika user menyalakannya, reduced motion mati, dan tidak sedang memilih entitas
+        controls.autoRotate = autoRotateRef.current && !prefersReducedMotion && selectedEntityRef.current === null;
       }
 
       controls.update();
@@ -594,7 +612,6 @@ export default function GlobeCanvas({
 
     // Comprehensive unmount cleanup
     return () => {
-      active = false;
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", handleResize);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -950,15 +967,18 @@ export default function GlobeCanvas({
       targetDistance = EARTH_RADIUS + 5.5;
     }
 
-    // Normal position of entity
+    // Hitung posisi kartesius 3D target di permukaan bola
     latLonToVector3(targetLat, targetLon, EARTH_RADIUS, V_CAM_TARGET);
-    flyLookTargetRef.current.copy(V_CAM_TARGET);
 
-    // Place camera outward along normal vector
+    // Kritis: Titik bidik OrbitControls selalu dikunci ke pusat bumi (0, 0, 0)
+    // agar rotasi orbit bola Bumi tetap seimbang pada porosnya dan tidak oleng saat di-drag setelah fly-to.
+    flyLookTargetRef.current.set(0, 0, 0);
+
+    // Posisikan kamera di sepanjang vektor normal keluar dari titik target menghadap ke pusat bumi
     V_NORMAL.copy(V_CAM_TARGET).normalize();
     flyTargetPosRef.current.copy(V_NORMAL).multiplyScalar(targetDistance);
 
-    // Trigger fly animation
+    // Memicu animasi peluncuran kamera (fly-to)
     isFlyingRef.current = true;
   }, [selectedEntity]);
 

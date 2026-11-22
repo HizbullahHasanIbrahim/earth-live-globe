@@ -88,3 +88,58 @@ export function createArcCurve(
   // Create the curve
   return new THREE.QuadraticBezierCurve3(p0, p1, p2);
 }
+
+/**
+ * Menghitung jarak lingkaran besar (geodesic distance) antara dua titik koordinat
+ * menggunakan rumus Haversine sesuai spesifikasi PRD Section 4.3:
+ *   d = 2 * R * arcsin(sqrt(sin^2(Δphi/2) + cos(phi1)*cos(phi2)*sin^2(Δlambda/2)))
+ *   dengan R = 6371 km
+ *
+ * @param lat1 Latitude titik 1 (derajat)
+ * @param lon1 Longitude titik 1 (derajat)
+ * @param lat2 Latitude titik 2 (derajat)
+ * @param lon2 Longitude titik 2 (derajat)
+ * @returns Jarak geodesik dalam kilometer (km)
+ */
+export function calculateHaversineDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371; // Radius rata-rata Bumi dalam km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const radLat1 = lat1 * (Math.PI / 180);
+  const radLat2 = lat2 * (Math.PI / 180);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+/**
+ * Estimasi latensi jaringan fiber optik antar hub dunia
+ * berdasarkan kecepatan sinyal dalam kaca (~200.000 km/s) + ~40% overhead perutean.
+ * @param distanceKm Jarak dalam km
+ * @returns Estimasi Round-Trip Time (RTT) dalam ms
+ */
+export function estimateNetworkLatency(distanceKm: number): number {
+  // RTT = (2 * distance / 200,000) * 1000 ms * 1.4 routing overhead
+  return Math.round((distanceKm / 100) * 1.4);
+}
+
+/**
+ * Estimasi waktu tempuh penerbangan komersial (~850 km/jam).
+ * @param distanceKm Jarak dalam km
+ * @returns Format jam dan menit (mis. "7j 15m")
+ */
+export function estimateFlightDuration(distanceKm: number): string {
+  const totalHours = distanceKm / 850 + 0.5; // +30 menit take-off/landing
+  const hours = Math.floor(totalHours);
+  const minutes = Math.round((totalHours - hours) * 60);
+  return `${hours}j ${minutes}m`;
+}

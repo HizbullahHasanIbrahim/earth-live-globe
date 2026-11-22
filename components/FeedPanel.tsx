@@ -6,7 +6,8 @@ import {
   Satellite, 
   ChevronRight, 
   ArrowUpRight,
-  AlertCircle
+  AlertCircle,
+  X
 } from "lucide-react";
 import { 
   EarthquakeEvent, 
@@ -17,6 +18,7 @@ import {
 
 interface FeedPanelProps {
   isOpen: boolean;
+  onClose?: () => void;
   earthquakes: EarthquakeEvent[];
   magFilter: MagnitudeFilter;
   setMagFilter: (filter: MagnitudeFilter) => void;
@@ -46,6 +48,7 @@ const getMagBadgeStyle = (mag: number) => {
 
 export default function FeedPanel({
   isOpen,
+  onClose,
   earthquakes,
   magFilter,
   setMagFilter,
@@ -66,25 +69,58 @@ export default function FeedPanel({
   }, [earthquakes]);
 
   return (
-    <aside className={`fixed top-20 left-4 bottom-20 z-80 w-[320px] transition-all duration-500 ease-fluid ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0 pointer-events-none'} hidden md:flex flex-col overflow-hidden`}>
+    <aside 
+      className={`
+        fixed z-[105] transition-all duration-500 ease-fluid
+        /* Mobile Portrait: Bottom Sheet */
+        inset-x-0 bottom-0 max-h-[52dvh] rounded-t-3xl border-t border-[var(--border-glass)] fluid-glass-elevated shadow-[0_-20px_50px_-10px_rgba(0,0,0,0.3)] p-4 pb-[max(1rem,calc(env(safe-area-inset-bottom)+0.5rem))] flex flex-col overflow-hidden
+        ${isOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}
+        /* Mobile Landscape (max-height: 520px): Kompak di sisi kiri */
+        landscape:max-h-full landscape:top-2 landscape:bottom-2 landscape:left-2 landscape:right-auto landscape:w-[310px] landscape:rounded-2xl landscape:border landscape:p-3
+        landscape:${isOpen ? 'translate-x-0 translate-y-0 opacity-100' : '-translate-x-[120%] translate-y-0 opacity-0 pointer-events-none'}
+        /* Desktop (>= md): Floating Left Drawer */
+        md:top-20 md:left-4 md:bottom-20 md:right-auto md:w-[320px] md:max-h-none md:rounded-none md:border-0 md:bg-transparent md:backdrop-blur-none md:shadow-none md:p-0 md:z-80 md:space-y-3
+        md:${isOpen ? 'translate-x-0 translate-y-0 opacity-100' : '-translate-x-[120%] translate-y-0 opacity-0 pointer-events-none'}
+      `}
+    >
+      {/* Drag Grabber (Mobile Portrait) */}
+      <div className="w-10 h-1 bg-[var(--border-glass)] rounded-full mx-auto mb-2 md:hidden shrink-0" />
+
+      {/* Header bar on mobile */}
+      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-glass)] md:hidden shrink-0">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-[var(--accent-primary)]" />
+          <span className="text-xs font-bold text-[var(--text-primary)]">Feed Gempa Global</span>
+        </div>
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all touch-manipulation"
+            aria-label="Tutup panel feed"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       {/* Magnitude Filter Segmented Control */}
-      <div className="p-1.5 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)] flex items-center">
+      <div className="p-1.5 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)] flex items-center shrink-0">
         {(["all", "4.5", "5.5", "6.0"] as MagnitudeFilter[]).map((f) => (
           <button
             key={f}
             onClick={() => setMagFilter(f)}
-            className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold transition-all ${magFilter === f ? 'bg-[var(--accent-primary)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+            className={`flex-1 min-h-[44px] py-1.5 rounded-xl text-[10px] font-bold transition-all touch-manipulation flex items-center justify-center ${magFilter === f ? 'bg-[var(--accent-primary)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
           >
             {f === "all" ? "Semua" : `M${f}+`}
           </button>
         ))}
       </div>
 
-      {/* ISS Quick Card */}
+      {/* ISS Quick Card (Visible on desktop & mobile landscape) */}
       {iss && (
         <button
           onClick={() => onSelectEntity({ type: "iss", data: iss })}
-          className={`flex items-center gap-3 p-3 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)] transition-all hover:scale-[1.02] active:scale-[0.98] text-left ${selectedEntity?.type === "iss" ? 'ring-2 ring-[var(--accent-primary)]' : ''}`}
+          className={`hidden sm:flex items-center gap-3 p-3 min-h-[44px] rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)] transition-all hover:scale-[1.02] active:scale-[0.98] text-left shrink-0 touch-manipulation ${selectedEntity?.type === "iss" ? 'ring-2 ring-[var(--accent-primary)]' : ''}`}
         >
           <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500 group-hover:scale-110 transition-transform">
             <Satellite className="w-4 h-4" />
@@ -100,25 +136,25 @@ export default function FeedPanel({
       )}
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="p-3 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)]">
+      <div className="grid grid-cols-2 gap-3 shrink-0">
+        <div className="p-2.5 sm:p-3 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)]">
           <span className="text-[9px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Total</span>
-          <p className="text-lg font-display font-bold text-[var(--text-primary)] leading-tight">{filteredQuakes.length}</p>
+          <p className="text-base sm:text-lg font-display font-bold text-[var(--text-primary)] leading-tight">{filteredQuakes.length}</p>
         </div>
-        <div className="p-3 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)]">
+        <div className="p-2.5 sm:p-3 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)]">
           <span className="text-[9px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Max Mag</span>
-          <p className="text-lg font-display font-bold text-[var(--accent-primary)] leading-tight">M{maxMag.toFixed(1)}</p>
+          <p className="text-base sm:text-lg font-display font-bold text-[var(--accent-primary)] leading-tight">M{maxMag.toFixed(1)}</p>
         </div>
       </div>
 
       {/* Main Earthquake List */}
-      <div className="flex-1 flex flex-col min-h-0 p-2 rounded-3xl fluid-glass-elevated shadow-2xl border border-[var(--border-glass)]">
-        <div className="flex items-center justify-between border-b border-[var(--border-glass)] p-4 shrink-0">
+      <div className="flex-1 flex flex-col min-h-0 p-2 rounded-3xl fluid-glass-elevated shadow-2xl border border-[var(--border-glass)] overflow-hidden">
+        <div className="flex items-center justify-between border-b border-[var(--border-glass)] p-3 sm:p-4 shrink-0">
           <h3 className="text-xs font-bold text-[var(--text-primary)]">Aktivitas Gempa</h3>
           <span className="text-[10px] font-mono tabular-nums text-[var(--text-secondary)] uppercase tracking-wider">TERBARU</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-2 py-2 sm:py-3 space-y-1 custom-scrollbar overscroll-contain">
           {filteredQuakes.length > 0 ? (
             filteredQuakes.map((eq) => (
               <button
@@ -126,7 +162,7 @@ export default function FeedPanel({
                 onClick={() => onSelectEntity({ type: "earthquake", data: eq })}
                 className={`flex items-center gap-3 w-full p-2.5 rounded-xl transition-all duration-300 text-left hover:bg-[var(--glass-hover)] group ${selectedEntity?.type === "earthquake" && selectedEntity.data.id === eq.id ? 'bg-[var(--glass-active)] ring-1 ring-[var(--accent-primary)]' : ''}`}
               >
-                <div className="flex items-center justify-center min-w-[42px] h-[42px] rounded-lg border font-display font-bold transition-transform group-hover:scale-105" style={getMagBadgeStyle(eq.mag)}>
+                <div className="flex items-center justify-center min-w-[42px] h-[42px] rounded-lg border font-display font-bold transition-transform group-hover:scale-105 shrink-0" style={getMagBadgeStyle(eq.mag)}>
                   <span className="text-sm">{eq.mag.toFixed(1)}</span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -141,12 +177,12 @@ export default function FeedPanel({
               </button>
             ))
           ) : (
-            <div className="flex items-center justify-center py-10 text-center px-4">
-              <AlertCircle className="w-8 h-8 text-[var(--text-secondary)] mb-3 opacity-20" />
+            <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+              <AlertCircle className="w-8 h-8 text-[var(--text-secondary)] mb-2 opacity-20" />
               <p className="text-xs font-medium text-[var(--text-secondary)]">Tidak ada data untuk filter ini.</p>
               <button 
                 onClick={() => setMagFilter("all")}
-                className="mt-3 text-[10px] font-bold text-[var(--accent-primary)] hover:underline"
+                className="mt-2 text-[10px] font-bold text-[var(--accent-primary)] hover:underline"
               >
                 Reset Filter
               </button>

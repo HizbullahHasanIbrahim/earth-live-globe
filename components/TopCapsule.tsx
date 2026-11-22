@@ -107,10 +107,10 @@ export default function TopCapsule({
   };
 
   return (
-    <header className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2 rounded-full fluid-glass shadow-2xl min-w-[320px] max-w-[95vw] transition-all duration-500 landscape:top-2 landscape:px-3 landscape:py-1.5 landscape:gap-2 landscape:min-w-[280px]">
+    <header className="fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full fluid-glass shadow-2xl min-w-[320px] max-w-[95vw] transition-all duration-500 landscape:top-[max(0.5rem,env(safe-area-inset-top))] landscape:px-3 landscape:py-1 landscape:gap-2 landscape:min-w-[280px]">
       {/* Left: Brand & Status */}
-      <div className="flex items-center gap-2.5 pr-2 border-r border-[var(--border-glass)]">
-        <div className="p-1.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-primary)]">
+      <div className="flex items-center gap-2 pr-1 sm:pr-2 border-r border-[var(--border-glass)]">
+        <div className="p-1.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-primary)] shrink-0">
           <Globe className="w-4 h-4" />
         </div>
         <div className="hidden sm:flex flex-col">
@@ -125,7 +125,8 @@ export default function TopCapsule({
         <button 
           onClick={onRefresh}
           disabled={isRefreshing}
-          className={`p-1.5 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+          aria-label="Refresh data gempa dan ISS"
+          className={`min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all touch-manipulation ${isRefreshing ? 'animate-spin' : ''}`}
         >
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
@@ -133,8 +134,8 @@ export default function TopCapsule({
 
       {/* Middle: Quick Search */}
       <div ref={searchRef} className="relative flex-1 min-w-[120px] sm:min-w-[200px] landscape:min-w-[150px]">
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full transition-all duration-300 ${isSearchFocused ? 'bg-[var(--glass-active)] ring-1 ring-[var(--accent-primary)]' : 'bg-[var(--glass-hover)]'}`}>
-          <Search className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+        <div className={`flex items-center gap-2 px-3 min-h-[40px] rounded-full transition-all duration-300 ${isSearchFocused ? 'bg-[var(--glass-active)] ring-1 ring-[var(--accent-primary)]' : 'bg-[var(--glass-hover)]'}`}>
+          <Search className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />
           <input 
             ref={inputRef}
             type="text"
@@ -204,15 +205,16 @@ export default function TopCapsule({
       </div>
 
       {/* Right: Utils */}
-      <div className="flex items-center gap-1 sm:gap-2 pl-2 border-l border-[var(--border-glass)]">
+      <div className="flex items-center gap-0.5 sm:gap-1.5 pl-1.5 sm:pl-2 border-l border-[var(--border-glass)]">
         <button
           onClick={toggleFeed}
           aria-pressed={isFeedOpen}
-          className={`relative p-2 rounded-full transition-all ${isFeedOpen ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-blue-500/20' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]'}`}
+          aria-label="Toggle panel feed gempa"
+          className={`relative min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full transition-all touch-manipulation ${isFeedOpen ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-blue-500/20' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)]'}`}
         >
           <Activity className="w-4 h-4" />
           {earthquakeCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-[var(--bg-app)]">
+            <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white border-2 border-[var(--bg-app)]">
               {earthquakeCount}
             </span>
           )}
@@ -220,15 +222,17 @@ export default function TopCapsule({
 
         <button
           onClick={onResetView}
-          className="p-2 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all touch-manipulation"
           title="Reset Kamera"
+          aria-label="Reset tampilan kamera"
         >
           <RotateCcw className="w-4 h-4" />
         </button>
 
         <button
           onClick={setTheme}
-          className="p-2 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all"
+          aria-label={`Ubah tema ke mode ${theme === "dark" ? "terang" : "gelap"}`}
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-all touch-manipulation"
         >
           {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-500" />}
         </button>
