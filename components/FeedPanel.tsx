@@ -23,11 +23,12 @@ interface FeedPanelProps {
   iss: IssTelemetry | null;
   onSelectEntity: (entity: SelectedEntity) => void;
   selectedEntity: SelectedEntity;
+  currentTime: number | null;
 }
 
-const getTimeAgo = (timestamp: number) => {
-  // Using static estimate to maintain render purity
-  const seconds = Math.floor((1732320000000 - timestamp) / 1000);
+const getTimeAgo = (timestamp: number, currentTime: number | null) => {
+  if (currentTime === null) return "";
+  const seconds = Math.floor((currentTime - timestamp) / 1000);
   if (seconds < 60) return "Baru saja";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} mnt lalu`;
@@ -38,7 +39,7 @@ const getTimeAgo = (timestamp: number) => {
 
 const getMagBadgeClass = (mag: number) => {
   if (mag < 4.5) return "bg-emerald-500/20 text-emerald-500 border-emerald-500/20";
-  if (mag < 5.5) return "bg-amber-500/20 text-amber-500 border-amber-500/20";
+  if (mag < 5.5) return "bg-[var(--mag-amber-bg)] text-[var(--mag-amber-text)] border-[var(--mag-amber-border)]";
   if (mag < 6.0) return "bg-orange-500/20 text-orange-500 border-orange-500/20";
   return "bg-red-500/20 text-red-500 border-red-500/20";
 };
@@ -50,7 +51,8 @@ export default function FeedPanel({
   setMagFilter,
   iss,
   onSelectEntity,
-  selectedEntity
+  selectedEntity,
+  currentTime
 }: FeedPanelProps) {
   const filteredQuakes = useMemo(() => {
     if (magFilter === "all") return earthquakes;
@@ -132,7 +134,7 @@ export default function FeedPanel({
                   <div className="flex items-center gap-2 text-[10px] text-[var(--text-secondary)] font-medium">
                     <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {eq.depth}km</span>
                     <span>•</span>
-                    <span>{getTimeAgo(eq.time)}</span>
+                    <span>{getTimeAgo(eq.time, currentTime)}</span>
                   </div>
                 </div>
                 <ChevronRight className={`w-4 h-4 transition-all duration-300 ${selectedEntity?.type === "earthquake" && selectedEntity.data.id === eq.id ? 'translate-x-0 opacity-100' : '-translate-x-2 opacity-0'}`} />

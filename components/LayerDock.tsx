@@ -22,6 +22,7 @@ export default function LayerDock({
       <div className="flex items-center gap-1.5 p-1.5 rounded-full fluid-glass shadow-2xl border border-[var(--border-glass)]">
         <button
           onClick={() => toggleLayer('earthquakes')}
+          aria-pressed={layers.earthquakes}
           className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 ${layers.earthquakes ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-blue-500/25' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-hover)]'}`}
         >
           <Activity className="w-3.5 h-3.5" />
@@ -30,6 +31,7 @@ export default function LayerDock({
 
         <button
           onClick={() => toggleLayer('iss')}
+          aria-pressed={layers.iss}
           className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 ${layers.iss ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-blue-500/25' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-hover)]'}`}
         >
           <Satellite className="w-3.5 h-3.5" />
@@ -38,6 +40,7 @@ export default function LayerDock({
 
         <button
           onClick={() => toggleLayer('routes')}
+          aria-pressed={layers.routes}
           className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all duration-300 ${layers.routes ? 'bg-[var(--accent-primary)] text-white shadow-lg shadow-blue-500/25' : 'text-[var(--text-secondary)] hover:bg-[var(--glass-hover)]'}`}
         >
           <Waypoints className="w-3.5 h-3.5" />

@@ -12,6 +12,7 @@ import {
   Globe
 } from "lucide-react";
 import { SelectedEntity } from "@/lib/types";
+import { ARC_ROUTES, HUB_CITIES } from "@/data/routes";
 
 interface DetailSheetProps {
   selectedEntity: SelectedEntity;
@@ -21,7 +22,8 @@ interface DetailSheetProps {
 
 export default function DetailSheet({
   selectedEntity,
-  onClose
+  onClose,
+  onSelectEntity
 }: DetailSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +42,7 @@ export default function DetailSheet({
 
   const getMagColor = (mag: number) => {
     if (mag < 4.5) return "text-emerald-500";
-    if (mag < 5.5) return "text-amber-500";
+    if (mag < 5.5) return "text-[var(--mag-amber-text)]";
     if (mag < 6.0) return "text-orange-500";
     return "text-red-500";
   };
@@ -51,7 +53,7 @@ export default function DetailSheet({
         ref={sheetRef}
         className={`
           pointer-events-auto transition-all duration-700 ease-fluid-strong
-          fixed bottom-0 inset-x-0 bg-[var(--bg-app)] border-t border-[var(--border-glass)] rounded-t-3xl shadow-[0_-20px_50px_-10px_rgba(0,0,0,0.3)] p-6 max-h-[48dvh] overflow-y-auto custom-scrollbar
+          fixed bottom-0 inset-x-0 fluid-glass-elevated border-t border-[var(--border-glass)] rounded-t-3xl shadow-[0_-20px_50px_-10px_rgba(0,0,0,0.3)] p-6 max-h-[48dvh] overflow-y-auto custom-scrollbar
           landscape:max-h-full landscape:top-0 landscape:bottom-0 landscape:right-0 landscape:left-auto landscape:w-[310px] landscape:rounded-none landscape:rounded-l-3xl landscape:border-t-0 landscape:border-l
           md:right-6 md:top-1/2 md:-translate-y-1/2 md:bottom-auto md:left-auto md:w-[340px] md:max-h-[80vh] md:rounded-3xl md:border md:fluid-glass-elevated
           ${selectedEntity ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-full opacity-0 scale-95'}
@@ -188,19 +190,32 @@ export default function DetailSheet({
               <div className="space-y-3">
                 <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-widest">Pusat Konektivitas Terhubung</p>
                 <div className="space-y-1.5">
-                  {/* Mock connections for the hub */}
-                  {[1, 2, 3].map((_, i) => (
-                    <button 
-                      key={i}
-                      className="flex items-center justify-between w-full p-3 rounded-xl bg-[var(--glass-hover)] border border-[var(--border-glass)] hover:bg-[var(--glass-active)] transition-all group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-[var(--accent-primary)] group-hover:scale-125 transition-transform" />
-                        <span className="text-xs font-semibold text-[var(--text-primary)]">London Heathrow (LHR)</span>
-                      </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                    </button>
-                  ))}
+                  {(() => {
+                    const connectedRoutes = ARC_ROUTES.filter(
+                      r => r.fromHubId === selectedEntity.data.id || r.toHubId === selectedEntity.data.id
+                    );
+                    if (connectedRoutes.length === 0) {
+                      return <p className="text-xs text-[var(--text-secondary)]">Tidak ada rute terhubung.</p>;
+                    }
+                    return connectedRoutes.map((route) => {
+                      const targetHubId = route.fromHubId === selectedEntity.data.id ? route.toHubId : route.fromHubId;
+                      const targetHub = HUB_CITIES.find(h => h.id === targetHubId);
+                      if (!targetHub) return null;
+                      return (
+                        <button
+                          key={route.id}
+                          onClick={() => onSelectEntity?.({ type: "hub", data: targetHub })}
+                          className="flex items-center justify-between w-full p-3 rounded-xl bg-[var(--glass-hover)] border border-[var(--border-glass)] hover:bg-[var(--glass-active)] transition-all group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-2 h-2 rounded-full bg-[var(--accent-primary)] group-hover:scale-125 transition-transform" />
+                            <span className="text-xs font-semibold text-[var(--text-primary)]">{targetHub.name} ({targetHub.country})</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                        </button>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </>

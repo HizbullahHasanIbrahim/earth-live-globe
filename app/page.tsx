@@ -43,6 +43,7 @@ export default function Home() {
   const [resetViewSignal, setResetViewSignal] = useState(0);
   const [magFilter, setMagFilter] = useState<MagnitudeFilter>("all");
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null);
+  const [now, setNow] = useState<number | null>(null);
 
   // Data State
   const [earthquakes, setEarthquakes] = useState<EarthquakeEvent[]>([]);
@@ -72,6 +73,16 @@ export default function Home() {
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Sync "now" for relative timestamps (60s update)
+  useEffect(() => {
+    const initialTimer = setTimeout(() => setNow(Date.now()), 0);
+    const interval = setInterval(() => setNow(Date.now()), 60000);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
   }, []);
 
     // Filtered Data
@@ -193,6 +204,7 @@ export default function Home() {
         iss={iss}
         onSelectEntity={handleSelectEntity}
         selectedEntity={selectedEntity}
+        currentTime={now}
       />
 
       <LayerDock 
