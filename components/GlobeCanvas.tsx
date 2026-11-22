@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { generateEarthTexture, disposeEarthTexture } from "@/lib/earthTexture";
+import { generateEarthTexture, disposeEarthTexture, clearEarthTextureCache } from "@/lib/earthTexture";
 import {
   ThemeMode,
   EarthquakeEvent,
@@ -599,6 +599,7 @@ export default function GlobeCanvas({
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }
+      clearEarthTextureCache();
     };
   }, []); // Run once on mount
 

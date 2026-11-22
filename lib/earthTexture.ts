@@ -12,12 +12,22 @@ interface CountryFeature {
   };
 }
 
+// Cache for generated textures to eliminate main-thread lag during theme toggles
+const textureCache = new Map<string, THREE.Texture>();
+
 /**
  * Menggambar tekstur equirectangular 2:1 (2048x1024 desktop / 1024x512 mobile)
  * menggunakan data TopoJSON world-atlas/countries-110m.json secara presisi geografis.
  */
 export async function generateEarthTexture(theme: "dark" | "light"): Promise<THREE.Texture> {
   const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+  const cacheKey = `${theme}-${isMobile ? "m" : "d"}`;
+
+  const cached = textureCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const width = isMobile ? 1024 : 2048;
   const height = isMobile ? 512 : 1024;
 
@@ -142,12 +152,27 @@ export async function generateEarthTexture(theme: "dark" | "light"): Promise<THR
   texture.anisotropy = 8;
   texture.needsUpdate = true;
 
+  textureCache.set(cacheKey, texture);
   return texture;
 }
 
 /**
- * Helper pembersihan texture saat unmount
+ * Helper pembersihan texture saat unmount atau refresh total
  */
 export function disposeEarthTexture(texture: THREE.Texture): void {
+  // Hanya dispose jika tekstur tidak tersimpan dalam cache aktif
+  for (const [, cached] of textureCache.entries()) {
+    if (cached === texture) return;
+  }
   texture.dispose();
+}
+
+/**
+ * Bersihkan seluruh texture cache saat app unmount
+ */
+export function clearEarthTextureCache(): void {
+  for (const [, tex] of textureCache.entries()) {
+    tex.dispose();
+  }
+  textureCache.clear();
 }
