@@ -1,7 +1,10 @@
-import { EarthquakeEvent, IssTelemetry } from "@/lib/types";
+import { EarthquakeEvent, IssTelemetry, UsgsPeriod } from "@/lib/types";
 import { FALLBACK_EARTHQUAKES } from "@/data/routes";
 
-const USGS_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson";
+const USGS_URLS: Record<UsgsPeriod, string> = {
+  day: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
+  week: "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson",
+};
 const ISS_URL = "https://api.wheretheiss.at/v1/satellites/25544";
 const TIMEOUT_MS = 8000;
 const ISS_TIMEOUT_MS = 6000;
@@ -45,9 +48,12 @@ const fetchWithTimeout = async (url: string, timeoutMs: number): Promise<Respons
   }
 };
 
-export const fetchEarthquakes = async (): Promise<{ data: EarthquakeEvent[]; isFallback: boolean }> => {
+export const fetchEarthquakes = async (
+  period: UsgsPeriod = "day"
+): Promise<{ data: EarthquakeEvent[]; isFallback: boolean }> => {
+  const url = USGS_URLS[period] || USGS_URLS.day;
   try {
-    const res = await fetchWithTimeout(USGS_URL, TIMEOUT_MS);
+    const res = await fetchWithTimeout(url, TIMEOUT_MS);
     if (!res.ok) {
       throw new Error(`HTTP error ${res.status}`);
     }

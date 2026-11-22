@@ -28,6 +28,8 @@ export interface GlobeCanvasProps {
   autoRotate?: boolean;
   isFollowingIss?: boolean;
   onToggleFollowIss?: (following: boolean) => void;
+  onLoaded?: () => void;
+  onWebGlError?: (error: string) => void;
 }
 
 const EARTH_RADIUS = 5.0;
@@ -98,7 +100,9 @@ export default function GlobeCanvas({
   resetViewSignal,
   autoRotate = true,
   isFollowingIss = false,
-  onToggleFollowIss
+  onToggleFollowIss,
+  onLoaded,
+  onWebGlError
 }: GlobeCanvasProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -113,6 +117,9 @@ export default function GlobeCanvas({
   const autoRotateRef = useRef<boolean>(autoRotate);
   const isFollowingIssRef = useRef<boolean>(isFollowingIss);
   const onToggleFollowIssRef = useRef(onToggleFollowIss);
+  const onLoadedRef = useRef(onLoaded);
+  const onWebGlErrorRef = useRef(onWebGlError);
+  const initialLoadedRef = useRef(false);
 
   // Update refs safely after commit
   useEffect(() => {
@@ -126,6 +133,8 @@ export default function GlobeCanvas({
     autoRotateRef.current = autoRotate;
     isFollowingIssRef.current = isFollowingIss;
     onToggleFollowIssRef.current = onToggleFollowIss;
+    onLoadedRef.current = onLoaded;
+    onWebGlErrorRef.current = onWebGlError;
   });
 
   // Scene object refs
@@ -172,7 +181,9 @@ export default function GlobeCanvas({
         powerPreference: "high-performance"
       });
     } catch (e) {
+      const errMsg = e instanceof Error ? e.message : "Inisialisasi WebGL gagal pada browser Anda";
       console.error("WebGL initialization failed:", e);
+      onWebGlErrorRef.current?.(errMsg);
       return;
     }
 
@@ -719,6 +730,21 @@ export default function GlobeCanvas({
       mat.uniforms.uOpacity.value = arcOpacity;
     });
 
+    // Sinkronisasi warna Hub City Markers saat tema berubah (Dark ⇄ Light)
+    if (hubInstancedMeshRef.current) {
+      const hubColor = new THREE.Color(isDark ? 0x38bdf8 : 0x0284c7);
+      const hubMat = hubInstancedMeshRef.current.material as THREE.MeshStandardMaterial;
+      hubMat.color.setHex(isDark ? 0x38bdf8 : 0x0284c7);
+      hubMat.emissive.setHex(isDark ? 0x0284c7 : 0x0369a1);
+      for (let i = 0; i < hubsRef.current.length; i++) {
+        hubInstancedMeshRef.current.setColorAt(i, hubColor);
+      }
+      if (hubInstancedMeshRef.current.instanceColor) {
+        hubInstancedMeshRef.current.instanceColor.needsUpdate = true;
+      }
+      hubMat.needsUpdate = true;
+    }
+
     // Refresh Earth Texture
     let active = true;
     generateEarthTexture(theme).then((newTex) => {
@@ -729,6 +755,10 @@ export default function GlobeCanvas({
         globeMaterialRef.current.map = newTex;
         globeMaterialRef.current.color.setHex(0xffffff);
         globeMaterialRef.current.needsUpdate = true;
+        if (!initialLoadedRef.current) {
+          initialLoadedRef.current = true;
+          onLoadedRef.current?.();
+        }
       } else {
         disposeEarthTexture(newTex);
       }

@@ -1,5 +1,9 @@
 export type ThemeMode = "dark" | "light";
 
+export type UsgsPeriod = "day" | "week";
+
+export type FeedSortMode = "newest" | "magnitude";
+
 export interface EarthquakeEvent {
   id: string;
   mag: number;

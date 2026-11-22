@@ -13,7 +13,9 @@ import {
   EarthquakeEvent, 
   IssTelemetry, 
   MagnitudeFilter, 
-  SelectedEntity 
+  SelectedEntity,
+  UsgsPeriod,
+  FeedSortMode
 } from "@/lib/types";
 
 interface FeedPanelProps {
@@ -26,6 +28,10 @@ interface FeedPanelProps {
   onSelectEntity: (entity: SelectedEntity) => void;
   selectedEntity: SelectedEntity;
   currentTime: number | null;
+  sortMode: FeedSortMode;
+  setSortMode: (mode: FeedSortMode) => void;
+  timePeriod: UsgsPeriod;
+  setTimePeriod: (period: UsgsPeriod) => void;
 }
 
 const getTimeAgo = (timestamp: number, currentTime: number | null) => {
@@ -55,17 +61,28 @@ export default function FeedPanel({
   iss,
   onSelectEntity,
   selectedEntity,
-  currentTime
+  currentTime,
+  sortMode,
+  setSortMode,
+  timePeriod,
+  setTimePeriod
 }: FeedPanelProps) {
   const filteredQuakes = useMemo(() => {
-    if (magFilter === "all") return earthquakes;
-    const min = parseFloat(magFilter);
-    return earthquakes.filter(e => e.mag >= min);
-  }, [earthquakes, magFilter]);
+    const base = magFilter === "all"
+      ? earthquakes
+      : earthquakes.filter((e) => e.mag >= parseFloat(magFilter));
+
+    return base.slice().sort((a, b) => {
+      if (sortMode === "magnitude") {
+        return b.mag - a.mag || b.time - a.time;
+      }
+      return b.time - a.time;
+    });
+  }, [earthquakes, magFilter, sortMode]);
 
   const maxMag = useMemo(() => {
     if (earthquakes.length === 0) return 0;
-    return Math.max(...earthquakes.map(e => e.mag));
+    return Math.max(...earthquakes.map((e) => e.mag));
   }, [earthquakes]);
 
   return (
@@ -103,17 +120,50 @@ export default function FeedPanel({
         )}
       </div>
 
-      {/* Magnitude Filter Segmented Control */}
-      <div className="p-1.5 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)] flex items-center shrink-0">
-        {(["all", "4.5", "5.5", "6.0"] as MagnitudeFilter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setMagFilter(f)}
-            className={`flex-1 min-h-[44px] py-1.5 rounded-xl text-[10px] font-bold transition-all touch-manipulation flex items-center justify-center ${magFilter === f ? 'bg-[var(--accent-primary)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-          >
-            {f === "all" ? "Semua" : `M${f}+`}
-          </button>
-        ))}
+      {/* Filter Controls: Rentang Waktu (USGS) & Magnitudo */}
+      <div className="space-y-2 shrink-0">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[9px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+            Rentang Waktu
+          </span>
+          <div className="flex items-center gap-1 p-0.5 rounded-xl fluid-glass border border-[var(--border-glass)]">
+            <button
+              onClick={() => setTimePeriod("day")}
+              className={`min-h-[32px] sm:min-h-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all touch-manipulation flex items-center justify-center ${
+                timePeriod === "day"
+                  ? "bg-[var(--accent-primary)] text-white shadow-sm"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+              aria-label="Rentang 24 jam terakhir"
+            >
+              24 Jam
+            </button>
+            <button
+              onClick={() => setTimePeriod("week")}
+              className={`min-h-[32px] sm:min-h-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all touch-manipulation flex items-center justify-center ${
+                timePeriod === "week"
+                  ? "bg-[var(--accent-primary)] text-white shadow-sm"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+              aria-label="Rentang 7 hari terakhir"
+            >
+              7 Hari
+            </button>
+          </div>
+        </div>
+
+        {/* Magnitude Filter Segmented Control */}
+        <div className="p-1.5 rounded-2xl fluid-glass shadow-xl border border-[var(--border-glass)] flex items-center">
+          {(["all", "4.5", "5.5", "6.0"] as MagnitudeFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setMagFilter(f)}
+              className={`flex-1 min-h-[44px] py-1.5 rounded-xl text-[10px] font-bold transition-all touch-manipulation flex items-center justify-center ${magFilter === f ? 'bg-[var(--accent-primary)] text-white shadow-md' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+            >
+              {f === "all" ? "Semua" : `M${f}+`}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ISS Quick Card (Visible on desktop & mobile landscape) */}
@@ -149,9 +199,35 @@ export default function FeedPanel({
 
       {/* Main Earthquake List */}
       <div className="flex-1 flex flex-col min-h-0 p-2 rounded-3xl fluid-glass-elevated shadow-2xl border border-[var(--border-glass)] overflow-hidden">
-        <div className="flex items-center justify-between border-b border-[var(--border-glass)] p-3 sm:p-4 shrink-0">
-          <h3 className="text-xs font-bold text-[var(--text-primary)]">Aktivitas Gempa</h3>
-          <span className="text-[10px] font-mono tabular-nums text-[var(--text-secondary)] uppercase tracking-wider">TERBARU</span>
+        <div className="flex items-center justify-between border-b border-[var(--border-glass)] p-3 sm:p-3.5 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+            <h3 className="text-xs font-bold text-[var(--text-primary)]">Aktivitas Gempa</h3>
+          </div>
+          <div className="flex items-center gap-1 p-0.5 rounded-xl fluid-glass border border-[var(--border-glass)]">
+            <button
+              onClick={() => setSortMode("newest")}
+              className={`min-h-[30px] sm:min-h-0 px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all touch-manipulation flex items-center justify-center ${
+                sortMode === "newest"
+                  ? "bg-[var(--accent-primary)] text-white shadow-sm"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+              aria-label="Urutkan berdasarkan terbaru"
+            >
+              Terbaru
+            </button>
+            <button
+              onClick={() => setSortMode("magnitude")}
+              className={`min-h-[30px] sm:min-h-0 px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all touch-manipulation flex items-center justify-center ${
+                sortMode === "magnitude"
+                  ? "bg-[var(--accent-primary)] text-white shadow-sm"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+              aria-label="Urutkan berdasarkan magnitudo terbesar"
+            >
+              M Terbesar
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 py-2 sm:py-3 space-y-1 custom-scrollbar overscroll-contain">

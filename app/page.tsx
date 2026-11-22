@@ -6,6 +6,7 @@ import TopCapsule from "@/components/TopCapsule";
 import LayerDock from "@/components/LayerDock";
 import FeedPanel from "@/components/FeedPanel";
 import DetailSheet from "@/components/DetailSheet";
+import StatusOverlays from "@/components/StatusOverlays";
 import {
   ThemeMode,
   EarthquakeEvent,
@@ -14,7 +15,9 @@ import {
   ArcRoute,
   LayerVisibility,
   SelectedEntity,
-  MagnitudeFilter
+  MagnitudeFilter,
+  UsgsPeriod,
+  FeedSortMode
 } from "@/lib/types";
 import { fetchEarthquakes, fetchIssTelemetry } from "@/lib/api";
 import { HUB_CITIES, ARC_ROUTES } from "@/data/routes";
@@ -42,10 +45,14 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [resetViewSignal, setResetViewSignal] = useState(0);
   const [magFilter, setMagFilter] = useState<MagnitudeFilter>("all");
+  const [sortMode, setSortMode] = useState<FeedSortMode>("newest");
+  const [timePeriod, setTimePeriod] = useState<UsgsPeriod>("day");
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null);
   const [now, setNow] = useState<number | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
   const [isFollowingIss, setIsFollowingIss] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [webGlError, setWebGlError] = useState<string | null>(null);
 
   // Data State
   const [earthquakes, setEarthquakes] = useState<EarthquakeEvent[]>([]);
@@ -86,7 +93,7 @@ export default function Home() {
     };
   }, []);
 
-    // Filtered Data
+  // Filtered Data
   const filteredEarthquakes = useMemo(() => {
     if (magFilter === "all") return earthquakes;
     const min = parseFloat(magFilter);
@@ -94,9 +101,19 @@ export default function Home() {
   }, [earthquakes, magFilter]);
 
   // Data Actions
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (periodToFetch?: UsgsPeriod) => {
     setIsRefreshing(true);
-    const { data, isFallback } = await fetchEarthquakes();
+    const targetPeriod = periodToFetch ?? timePeriod;
+    const { data, isFallback } = await fetchEarthquakes(targetPeriod);
+    setEarthquakes(data);
+    setIsEqFallback(isFallback);
+    setTimeout(() => setIsRefreshing(false), 800);
+  }, [timePeriod]);
+
+  const handleTimePeriodChange = useCallback(async (period: UsgsPeriod) => {
+    setTimePeriod(period);
+    setIsRefreshing(true);
+    const { data, isFallback } = await fetchEarthquakes(period);
     setEarthquakes(data);
     setIsEqFallback(isFallback);
     setTimeout(() => setIsRefreshing(false), 800);
@@ -184,6 +201,12 @@ export default function Home() {
 
   return (
     <main className="relative w-full h-[100dvh] overflow-hidden select-none bg-[var(--bg-app)]">
+      <StatusOverlays 
+        isLoading={isLoading} 
+        webGlError={webGlError} 
+        onRetry={() => window.location.reload()} 
+      />
+
       <DynamicGlobeCanvas 
         theme={theme}
         earthquakes={filteredEarthquakes}
@@ -197,13 +220,18 @@ export default function Home() {
         autoRotate={autoRotate}
         isFollowingIss={isFollowingIss}
         onToggleFollowIss={setIsFollowingIss}
+        onLoaded={() => setIsLoading(false)}
+        onWebGlError={(err) => {
+          setWebGlError(err);
+          setIsLoading(false);
+        }}
       />
 
       <TopCapsule 
         theme={theme}
         setTheme={toggleTheme}
         isRefreshing={isRefreshing}
-        onRefresh={refreshData}
+        onRefresh={() => refreshData()}
         onResetView={() => {
           setResetViewSignal(s => s + 1);
           setSelectedEntity(null);
@@ -229,6 +257,10 @@ export default function Home() {
         onSelectEntity={handleSelectEntity}
         selectedEntity={selectedEntity}
         currentTime={now}
+        sortMode={sortMode}
+        setSortMode={setSortMode}
+        timePeriod={timePeriod}
+        setTimePeriod={handleTimePeriodChange}
       />
 
       <LayerDock 
