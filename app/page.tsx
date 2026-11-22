@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useEffect, useTransition, useCallback } from "react";
+import { useState, useEffect, useTransition, useCallback, useMemo } from "react";
 import GlobeCanvas from "@/components/GlobeCanvas";
+import TopCapsule from "@/components/TopCapsule";
+import LayerDock from "@/components/LayerDock";
+import FeedPanel from "@/components/FeedPanel";
+import DetailSheet from "@/components/DetailSheet";
 import {
   ThemeMode,
   EarthquakeEvent,
@@ -9,21 +13,11 @@ import {
   HubCity,
   ArcRoute,
   LayerVisibility,
-  SelectedEntity
+  SelectedEntity,
+  MagnitudeFilter
 } from "@/lib/types";
 import { fetchEarthquakes, fetchIssTelemetry } from "@/lib/api";
 import { HUB_CITIES, ARC_ROUTES } from "@/data/routes";
-import {
-  Sun,
-  Moon,
-  Globe,
-  Radio,
-  Activity,
-  Navigation,
-  Compass,
-  X,
-  ExternalLink
-} from "lucide-react";
 
 const getInitialTheme = (): ThemeMode => {
   if (typeof window === "undefined") return "dark";
@@ -37,317 +31,179 @@ const getInitialTheme = (): ThemeMode => {
 };
 
 export default function Home() {
+  // UI State
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
-  const [, startTransition] = useTransition();
+  const [isFeedOpen, setIsFeedOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [resetViewSignal, setResetViewSignal] = useState(0);
+  const [magFilter, setMagFilter] = useState<MagnitudeFilter>("all");
+  const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null);
 
-  // Phase 2 Data States
+  // Data State
   const [earthquakes, setEarthquakes] = useState<EarthquakeEvent[]>([]);
   const [iss, setIss] = useState<IssTelemetry | null>(null);
   const [hubs] = useState<HubCity[]>(HUB_CITIES);
   const [routes] = useState<ArcRoute[]>(ARC_ROUTES);
-  const [isEqFallback, setIsEqFallback] = useState<boolean>(false);
-  const [isIssFallback, setIsIssFallback] = useState<boolean>(false);
-
-  // Layers & Selection
+  const [isEqFallback, setIsEqFallback] = useState(false);
+  const [isIssFallback, setIsIssFallback] = useState(false);
   const [layers, setLayers] = useState<LayerVisibility>({
     earthquakes: true,
     iss: true,
     routes: true
   });
-  const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null);
 
-  // Theme change listener for system preference
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
-    const handler = () => {
-      try {
-        if (!localStorage.getItem("earth_globe_theme")) {
-          const nextTheme = mediaQuery.matches ? "light" : "dark";
-          setTheme(nextTheme);
-          document.documentElement.setAttribute("data-theme", nextTheme);
-        }
-      } catch {}
-    };
-    mediaQuery.addEventListener("change", handler);
-    return () => mediaQuery.removeEventListener("change", handler);
-  }, []);
+  const [, startTransition] = useTransition();
 
-  // Fetch Earthquakes on mount
+  // Desktop auto-open feed
   useEffect(() => {
-    let mounted = true;
-    fetchEarthquakes().then(({ data, isFallback }) => {
-      if (mounted) {
-        setEarthquakes(data);
-        setIsEqFallback(isFallback);
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setIsFeedOpen(true);
+      } else {
+        setIsFeedOpen(false);
       }
-    });
-    return () => {
-      mounted = false;
     };
+    
+    handleResize();
+    const resizeHandler = () => handleResize();
+    window.addEventListener('resize', resizeHandler);
+    return () => window.removeEventListener('resize', resizeHandler);
   }, []);
 
-  // Poll ISS Telemetry every 5000ms
-  useEffect(() => {
-    let mounted = true;
-    const fetchIss = () => {
-      fetchIssTelemetry().then(({ data, isFallback }) => {
-        if (mounted) {
-          setIss(data);
-          setIsIssFallback(isFallback);
-        }
-      });
-    };
+  // Filtered Data
+  const filteredEarthquakes = useMemo(() => {
+    if (magFilter === "all") return earthquakes;
+    const min = parseFloat(magFilter);
+    return earthquakes.filter(e => e.mag >= min);
+  }, [earthquakes, magFilter]);
 
-    fetchIss();
-    const interval = setInterval(fetchIss, 5000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
+  // Data Actions
+  const refreshData = useCallback(async () => {
+    setIsRefreshing(true);
+    const { data, isFallback } = await fetchEarthquakes();
+    setEarthquakes(data);
+    setIsEqFallback(isFallback);
+    setTimeout(() => setIsRefreshing(false), 800);
+  }, []);
+
+  // Polling ISS
+  useEffect(() => {
+    const poll = async () => {
+      const { data, isFallback } = await fetchIssTelemetry();
+      setIss(data);
+      setIsIssFallback(isFallback);
     };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Initial Fetch
+  useEffect(() => {
+    const fetch = async () => {
+      await refreshData();
+    };
+    fetch();
+  }, [refreshData]);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === "INPUT") return;
+      
+      if (e.key === "Escape") {
+        setSelectedEntity(null);
+        setIsFeedOpen(false);
+      } else if (e.key.toLowerCase() === "r") {
+        setResetViewSignal(s => s + 1);
+        setSelectedEntity(null);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
   const toggleTheme = () => {
-    const nextTheme: ThemeMode = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
+    const next: ThemeMode = theme === "dark" ? "light" : "dark";
+    setTheme(next);
     startTransition(() => {
       try {
-        localStorage.setItem("earth_globe_theme", nextTheme);
+        localStorage.setItem("earth_globe_theme", next);
       } catch {}
-      document.documentElement.setAttribute("data-theme", nextTheme);
+      document.documentElement.setAttribute("data-theme", next);
     });
   };
 
-  const toggleLayer = useCallback((layerKey: keyof LayerVisibility) => {
-    setLayers((prev) => ({
-      ...prev,
-      [layerKey]: !prev[layerKey]
-    }));
+  const toggleLayer = useCallback((layer: keyof LayerVisibility) => {
+    setLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   }, []);
 
   return (
-    <main className="relative w-full h-[100dvh] overflow-hidden select-none">
-      {/* 3D WebGL Canvas */}
-      <GlobeCanvas
+    <main className="relative w-full h-[100dvh] overflow-hidden select-none bg-[var(--bg-app)]">
+      {/* 3D Visualizer Layer */}
+      <GlobeCanvas 
         theme={theme}
-        earthquakes={earthquakes}
+        earthquakes={filteredEarthquakes}
         iss={iss}
         hubs={hubs}
         routes={routes}
         layers={layers}
         selectedEntity={selectedEntity}
         onSelectEntity={setSelectedEntity}
+        resetViewSignal={resetViewSignal}
       />
 
-      {/* Top Capsule HUD (Apple Fluid Glass) */}
-      <header className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-full fluid-glass shadow-2xl min-w-[320px] max-w-[95vw]">
-        {/* Brand & Status */}
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-primary)]">
-            <Globe className="w-4 h-4 animate-pulse-subtle" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold tracking-tight text-[var(--text-primary)]">
-              Earth Live
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isEqFallback || isIssFallback
-                    ? "bg-amber-500"
-                    : "bg-emerald-500 animate-ping"
-                }`}
-              />
-              <span className="text-[10px] text-[var(--text-secondary)] font-medium">
-                {isEqFallback || isIssFallback ? "Cached / Simulation" : "Live Orbital Feed"}
-              </span>
-            </div>
-          </div>
-        </div>
+      {/* UI Overlay Layers */}
+      <TopCapsule 
+        theme={theme}
+        setTheme={toggleTheme}
+        isRefreshing={isRefreshing}
+        onRefresh={refreshData}
+        onResetView={() => {
+          setResetViewSignal(s => s + 1);
+          setSelectedEntity(null);
+        }}
+        isFeedOpen={isFeedOpen}
+        toggleFeed={() => setIsFeedOpen(!isFeedOpen)}
+        earthquakeCount={filteredEarthquakes.length}
+        isFallback={isEqFallback || isIssFallback}
+        hubs={hubs}
+        earthquakes={earthquakes}
+        iss={iss}
+        onSelectEntity={setSelectedEntity}
+      />
 
-        {/* Phase 2 Layer Toggles */}
-        <div className="flex items-center gap-1.5 bg-[var(--glass-hover)] p-1 rounded-full">
-          {/* Earthquakes Toggle */}
-          <button
-            type="button"
-            onClick={() => toggleLayer("earthquakes")}
-            aria-label="Toggle Earthquakes Layer"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer ${
-              layers.earthquakes
-                ? "bg-[var(--accent-primary)] text-white shadow-sm"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Gempa</span>
-            <span className="text-[10px] opacity-80">({earthquakes.length})</span>
-          </button>
+      <FeedPanel 
+        isOpen={isFeedOpen}
+        earthquakes={earthquakes}
+        magFilter={magFilter}
+        setMagFilter={setMagFilter}
+        iss={iss}
+        onSelectEntity={(entity) => {
+          setSelectedEntity(entity);
+          // Auto close feed on mobile when entity selected to see globe
+          if (window.innerWidth <= 768) setIsFeedOpen(false);
+        }}
+        selectedEntity={selectedEntity}
+      />
 
-          {/* ISS Toggle */}
-          <button
-            type="button"
-            onClick={() => toggleLayer("iss")}
-            aria-label="Toggle ISS Tracker Layer"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer ${
-              layers.iss
-                ? "bg-[var(--accent-primary)] text-white shadow-sm"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">ISS</span>
-          </button>
+      <LayerDock 
+        layers={layers}
+        toggleLayer={toggleLayer}
+        selectedEntity={selectedEntity}
+      />
 
-          {/* Routes Toggle */}
-          <button
-            type="button"
-            onClick={() => toggleLayer("routes")}
-            aria-label="Toggle Connectivity Routes Layer"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer ${
-              layers.routes
-                ? "bg-[var(--accent-primary)] text-white shadow-sm"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            <Navigation className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Rute</span>
-          </button>
-        </div>
+      <DetailSheet 
+        selectedEntity={selectedEntity}
+        onClose={() => setSelectedEntity(null)}
+        onSelectEntity={setSelectedEntity}
+      />
 
-        {/* Theme Toggle Button */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          className="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--glass-hover)] text-[var(--text-primary)] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
-        >
-          {theme === "dark" ? (
-            <Sun className="w-4 h-4 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 text-indigo-500" />
-          )}
-        </button>
-      </header>
-
-      {/* Selected Entity Preview Card (Fase 2 Fly-To & Raycaster Verification) */}
-      {selectedEntity && (
-        <aside className="absolute bottom-6 right-6 z-30 w-80 max-w-[calc(100vw-3rem)] rounded-2xl p-4 fluid-glass shadow-2xl border border-[var(--border-glass)] transition-all animate-fade-in">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-primary)]">
-                {selectedEntity.type === "earthquake" && <Activity className="w-4 h-4" />}
-                {selectedEntity.type === "iss" && <Radio className="w-4 h-4" />}
-                {selectedEntity.type === "hub" && <Compass className="w-4 h-4" />}
-              </span>
-              <div>
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--text-secondary)]">
-                  {selectedEntity.type === "earthquake" && "Gempa Bumi Terdeteksi"}
-                  {selectedEntity.type === "iss" && "Stasiun Luar Angkasa Internasional"}
-                  {selectedEntity.type === "hub" && "Kota Hub Global"}
-                </span>
-                <h3 className="text-sm font-bold text-[var(--text-primary)] leading-tight">
-                  {selectedEntity.type === "earthquake" && selectedEntity.data.place}
-                  {selectedEntity.type === "iss" && "ISS (ZARYA - 25544)"}
-                  {selectedEntity.type === "hub" && `${selectedEntity.data.name}, ${selectedEntity.data.country}`}
-                </h3>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSelectedEntity(null)}
-              aria-label="Tutup Panel Info"
-              className="p-1 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-hover)] transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Details Content */}
-          <div className="mt-3 pt-3 border-t border-[var(--border-glass)] grid grid-cols-2 gap-2 text-xs">
-            {selectedEntity.type === "earthquake" && (
-              <>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Magnitudo</span>
-                  <span className="font-bold text-[var(--accent-primary)]">
-                    M {selectedEntity.data.mag.toFixed(1)} {selectedEntity.data.magnitudeType}
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Kedalaman</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.depth.toFixed(1)} km
-                  </span>
-                </div>
-                <div className="flex flex-col col-span-2">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Waktu Kejadian</span>
-                  <span className="text-[11px] text-[var(--text-primary)]">
-                    {new Date(selectedEntity.data.time).toLocaleString("id-ID", {
-                      dateStyle: "medium",
-                      timeStyle: "short"
-                    })}
-                  </span>
-                </div>
-                {selectedEntity.data.url && (
-                  <a
-                    href={selectedEntity.data.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="col-span-2 mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--accent-primary)] hover:underline"
-                  >
-                    <span>Detail USGS</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-              </>
-            )}
-
-            {selectedEntity.type === "iss" && (
-              <>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Latitude</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.latitude.toFixed(2)}°
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Longitude</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.longitude.toFixed(2)}°
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Ketinggian</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.altitude.toFixed(1)} km
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Kecepatan</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.velocity.toFixed(0)} km/h
-                  </span>
-                </div>
-              </>
-            )}
-
-            {selectedEntity.type === "hub" && (
-              <>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Koordinat</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.lat.toFixed(2)}°, {selectedEntity.data.lon.toFixed(2)}°
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Zona Waktu</span>
-                  <span className="font-medium text-[var(--text-primary)]">
-                    {selectedEntity.data.timezone}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        </aside>
-      )}
+      {/* Screen reader / Accessibility helpers */}
+      <div className="sr-only">
+        <h1>Earth Live Visualizer</h1>
+        <p>Aplikasi visualisasi bumi 3D interaktif menampilkan data gempa real-time dan tracker ISS.</p>
+      </div>
     </main>
   );
 }

@@ -24,6 +24,7 @@ export interface GlobeCanvasProps {
   layers: LayerVisibility;
   selectedEntity: SelectedEntity;
   onSelectEntity: (entity: SelectedEntity) => void;
+  resetViewSignal?: number;
 }
 
 const EARTH_RADIUS = 5.0;
@@ -85,7 +86,8 @@ export default function GlobeCanvas({
   routes,
   layers,
   selectedEntity,
-  onSelectEntity
+  onSelectEntity,
+  resetViewSignal
 }: GlobeCanvasProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -855,6 +857,15 @@ export default function GlobeCanvas({
     // Trigger fly animation
     isFlyingRef.current = true;
   }, [selectedEntity]);
+
+  // Handle Reset View Signal
+  useEffect(() => {
+    if (resetViewSignal && resetViewSignal > 0) {
+      flyTargetPosRef.current.set(0, 4, 15);
+      flyLookTargetRef.current.set(0, 0, 0);
+      isFlyingRef.current = true;
+    }
+  }, [resetViewSignal]);
 
   return (
     <div
