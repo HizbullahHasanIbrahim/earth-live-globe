@@ -40,6 +40,10 @@ const MAX_ISS_TRAIL = 40;
 
 // Reusable objects pool
 const V_UP = new THREE.Vector3(0, 1, 0);
+const V_FORWARD_Z = new THREE.Vector3(0, 0, 1);
+const V_SCALE_ONE = new THREE.Vector3(1, 1, 1);
+const V_RING_POS = new THREE.Vector3();
+const V_SUB_SURF = new THREE.Vector3();
 const V_NORMAL = new THREE.Vector3();
 const V_POS = new THREE.Vector3();
 const V_SCALE = new THREE.Vector3();
@@ -151,8 +155,13 @@ export default function GlobeCanvas({
 
   // Layer meshes & groups
   const eqInstancedMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  const eqRingInstancedMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  const eqRingMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const hubInstancedMeshRef = useRef<THREE.InstancedMesh | null>(null);
   const issGroupRef = useRef<THREE.Group | null>(null);
+  const issFootprintRef = useRef<THREE.LineLoop | null>(null);
+  const issNadirLineRef = useRef<THREE.Line | null>(null);
+  const issNadirPosRef = useRef<Float32Array | null>(null);
   const issTrailLineRef = useRef<THREE.Line | null>(null);
   const issTrailGeoRef = useRef<THREE.BufferGeometry | null>(null);
   const routesGroupRef = useRef<THREE.Group | null>(null);
@@ -265,11 +274,61 @@ export default function GlobeCanvas({
     scene.add(eqInstancedMesh);
     eqInstancedMeshRef.current = eqInstancedMesh;
 
+    // Pre-allocate InstancedMesh for Earthquake Pulse Rings (Cincin Riak Berdenyut di Episentrum)
+    const pinRingGeo = new THREE.RingGeometry(0.04, 0.085, 18);
+    const ringPhases = new Float32Array(MAX_EARTHQUAKES);
+    for (let i = 0; i < MAX_EARTHQUAKES; i++) {
+      ringPhases[i] = (i * 0.23) % 1.0;
+    }
+    pinRingGeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(ringPhases, 1));
+
+    const eqRingMat = new THREE.ShaderMaterial({
+      side: THREE.DoubleSide,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: isDark ? 0.75 : 0.65 }
+      },
+      vertexShader: `
+        attribute float aPhase;
+        uniform float uTime;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          vColor = instanceColor;
+          float cycle = fract(uTime * 0.55 + aPhase);
+          float expand = 1.0 + cycle * 2.8;
+          vec3 pos = vec3(position.x * expand, position.y * expand, position.z);
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          vAlpha = (1.0 - cycle) * smoothstep(0.0, 0.2, cycle);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec3 vColor;
+        varying float vAlpha;
+        void main() {
+          gl_FragColor = vec4(vColor, vAlpha * uOpacity);
+        }
+      `
+    });
+    const eqRingMesh = new THREE.InstancedMesh(pinRingGeo, eqRingMat, MAX_EARTHQUAKES);
+    eqRingMesh.count = 0;
+    eqRingMesh.frustumCulled = false;
+    eqRingMesh.visible = layersRef.current.earthquakes;
+    scene.add(eqRingMesh);
+    eqRingInstancedMeshRef.current = eqRingMesh;
+    eqRingMatRef.current = eqRingMat;
+
     // Atmosphere Glow
     const atmosGeo = new THREE.SphereGeometry(EARTH_RADIUS * 1.05, 64, 64);
     const atmosMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       transparent: true,
+      depthWrite: false, // Mencegah pemblokiran z-buffer terhadap rute konektivitas atau partikel
       blending: isDark ? THREE.AdditiveBlending : THREE.NormalBlending,
       uniforms: {
         glowColor: { value: new THREE.Color(isDark ? 0x38bdf8 : 0x3b82f6) },
@@ -397,6 +456,51 @@ export default function GlobeCanvas({
     issTrailLine.visible = layersRef.current.iss;
     scene.add(issTrailLine);
     issTrailLineRef.current = issTrailLine;
+
+    // ISS Footprint Ring (Cincin Proyeksi Jangkauan Sinyal di Permukaan Bumi - PRD 3.3)
+    const footprintGeo = new THREE.BufferGeometry();
+    const footprintSegments = 64;
+    const footprintPos = new Float32Array(footprintSegments * 3);
+    const alphaFootprint = 0.16; // ~9.2 derajat radius sudut jangkauan sinyal (~1000 km)
+    const sinA = Math.sin(alphaFootprint);
+    const cosA = Math.cos(alphaFootprint);
+    const rFootprint = EARTH_RADIUS + 0.015;
+
+    for (let i = 0; i < footprintSegments; i++) {
+      const theta = (i / footprintSegments) * Math.PI * 2;
+      footprintPos[i * 3] = rFootprint * sinA * Math.cos(theta);
+      footprintPos[i * 3 + 1] = rFootprint * sinA * Math.sin(theta);
+      footprintPos[i * 3 + 2] = rFootprint * cosA;
+    }
+    footprintGeo.setAttribute("position", new THREE.BufferAttribute(footprintPos, 3));
+
+    const footprintMat = new THREE.LineBasicMaterial({
+      color: isDark ? 0x38bdf8 : 0x2563eb,
+      transparent: true,
+      opacity: isDark ? 0.6 : 0.75,
+      linewidth: 1.5,
+      depthWrite: false
+    });
+    const issFootprint = new THREE.LineLoop(footprintGeo, footprintMat);
+    issFootprint.visible = layersRef.current.iss;
+    scene.add(issFootprint);
+    issFootprintRef.current = issFootprint;
+
+    // Nadir Line (Garis proyeksi vertikal halus dari satelit ISS ke permukaan Bumi tepat di bawahnya)
+    const nadirGeo = new THREE.BufferGeometry();
+    const nadirPos = new Float32Array(6);
+    nadirGeo.setAttribute("position", new THREE.BufferAttribute(nadirPos, 3));
+    const nadirMat = new THREE.LineBasicMaterial({
+      color: isDark ? 0x38bdf8 : 0x2563eb,
+      transparent: true,
+      opacity: isDark ? 0.4 : 0.55,
+      depthWrite: false
+    });
+    const nadirLine = new THREE.Line(nadirGeo, nadirMat);
+    nadirLine.visible = layersRef.current.iss;
+    scene.add(nadirLine);
+    issNadirLineRef.current = nadirLine;
+    issNadirPosRef.current = nadirPos;
 
     // Layer 3: Routes Group
     const routesGroup = new THREE.Group();
@@ -570,10 +674,13 @@ export default function GlobeCanvas({
       const delta = Math.min((currTime - prevTime) / 1000, 0.1);
       prevTime = currTime;
 
-      // Update arc shader uniforms (flow animation along Bézier curve)
+      // Update arc shader uniforms (flow animation along Bézier curve) & earthquake pulse rings
       const uTimeVal = currTime * 0.001;
       for (let i = 0; i < arcMaterialsRef.current.length; i++) {
         arcMaterialsRef.current[i].uniforms.uTime.value = uTimeVal;
+      }
+      if (eqRingMatRef.current) {
+        eqRingMatRef.current.uniforms.uTime.value = uTimeVal;
       }
 
       // Smooth ISS position interpolation (lerp)
@@ -585,6 +692,23 @@ export default function GlobeCanvas({
         V_NORMAL.copy(issCurrentPosRef.current).normalize();
         Q_ROT.setFromUnitVectors(V_UP, V_NORMAL);
         issGroupRef.current.quaternion.copy(Q_ROT);
+
+        // Update Footprint Ring & Nadir Line proyeksi ISS ke permukaan bumi (Zero-allocation)
+        if (issFootprintRef.current) {
+          Q_ROT.setFromUnitVectors(V_FORWARD_Z, V_NORMAL);
+          issFootprintRef.current.quaternion.copy(Q_ROT);
+        }
+        if (issNadirLineRef.current && issNadirPosRef.current) {
+          V_SUB_SURF.copy(V_NORMAL).multiplyScalar(EARTH_RADIUS + 0.015);
+          const pos = issNadirPosRef.current;
+          pos[0] = issCurrentPosRef.current.x;
+          pos[1] = issCurrentPosRef.current.y;
+          pos[2] = issCurrentPosRef.current.z;
+          pos[3] = V_SUB_SURF.x;
+          pos[4] = V_SUB_SURF.y;
+          pos[5] = V_SUB_SURF.z;
+          issNadirLineRef.current.geometry.attributes.position.needsUpdate = true;
+        }
 
         // Pelacakan real-time kamera mengunci posisi ISS saat fitur 'Ikuti ISS' aktif
         if (isFollowingIssRef.current) {
@@ -661,11 +785,23 @@ export default function GlobeCanvas({
       wingMat.dispose();
       issTrailGeo.dispose();
       issTrailMat.dispose();
+      if (issFootprintRef.current) {
+        issFootprintRef.current.geometry.dispose();
+        (issFootprintRef.current.material as THREE.Material).dispose();
+      }
+      if (issNadirLineRef.current) {
+        issNadirLineRef.current.geometry.dispose();
+        (issNadirLineRef.current.material as THREE.Material).dispose();
+      }
 
       // Dispose earthquakes and hubs
       if (eqInstancedMeshRef.current) {
         eqInstancedMeshRef.current.geometry.dispose();
         (eqInstancedMeshRef.current.material as THREE.Material).dispose();
+      }
+      if (eqRingInstancedMeshRef.current) {
+        eqRingInstancedMeshRef.current.geometry.dispose();
+        (eqRingInstancedMeshRef.current.material as THREE.Material).dispose();
       }
       if (hubInstancedMeshRef.current) {
         hubInstancedMeshRef.current.geometry.dispose();
@@ -716,6 +852,21 @@ export default function GlobeCanvas({
         isDark ? 0x38bdf8 : 0x2563eb
       );
       (issTrailLineRef.current.material as THREE.LineBasicMaterial).opacity = isDark ? 0.65 : 0.85;
+    }
+    if (issFootprintRef.current) {
+      (issFootprintRef.current.material as THREE.LineBasicMaterial).color.setHex(
+        isDark ? 0x38bdf8 : 0x2563eb
+      );
+      (issFootprintRef.current.material as THREE.LineBasicMaterial).opacity = isDark ? 0.6 : 0.75;
+    }
+    if (issNadirLineRef.current) {
+      (issNadirLineRef.current.material as THREE.LineBasicMaterial).color.setHex(
+        isDark ? 0x38bdf8 : 0x2563eb
+      );
+      (issNadirLineRef.current.material as THREE.LineBasicMaterial).opacity = isDark ? 0.4 : 0.55;
+    }
+    if (eqRingMatRef.current) {
+      eqRingMatRef.current.uniforms.uOpacity.value = isDark ? 0.75 : 0.65;
     }
     if (starFieldRef.current) {
       starFieldRef.current.visible = isDark;
@@ -774,11 +925,20 @@ export default function GlobeCanvas({
     if (eqInstancedMeshRef.current) {
       eqInstancedMeshRef.current.visible = layers.earthquakes;
     }
+    if (eqRingInstancedMeshRef.current) {
+      eqRingInstancedMeshRef.current.visible = layers.earthquakes;
+    }
     if (issGroupRef.current) {
       issGroupRef.current.visible = layers.iss;
     }
     if (issTrailLineRef.current) {
       issTrailLineRef.current.visible = layers.iss;
+    }
+    if (issFootprintRef.current) {
+      issFootprintRef.current.visible = layers.iss;
+    }
+    if (issNadirLineRef.current) {
+      issNadirLineRef.current.visible = layers.iss;
     }
     if (routesGroupRef.current) {
       routesGroupRef.current.visible = layers.routes;
@@ -791,10 +951,14 @@ export default function GlobeCanvas({
   // Update Earthquakes (Layer 1 - Optimized THREE.InstancedMesh re-use)
   useEffect(() => {
     const instancedMesh = eqInstancedMeshRef.current;
+    const ringMesh = eqRingInstancedMeshRef.current;
     if (!instancedMesh) return;
 
     const count = Math.min(earthquakes.length, MAX_EARTHQUAKES);
     instancedMesh.count = count;
+    if (ringMesh) {
+      ringMesh.count = count;
+    }
     
     if (count === 0) return;
 
@@ -816,11 +980,26 @@ export default function GlobeCanvas({
       // Color coding based on magnitude
       getMagnitudeColor(eq.mag, C_COLOR);
       instancedMesh.setColorAt(i, C_COLOR);
+
+      // Cincin riak (pulse ring) di sekitar episentrum gempa
+      if (ringMesh) {
+        V_RING_POS.copy(V_NORMAL).multiplyScalar(EARTH_RADIUS + 0.012);
+        Q_ROT.setFromUnitVectors(V_FORWARD_Z, V_NORMAL);
+        M_TRANSFORM.compose(V_RING_POS, Q_ROT, V_SCALE_ONE);
+        ringMesh.setMatrixAt(i, M_TRANSFORM);
+        ringMesh.setColorAt(i, C_COLOR);
+      }
     }
 
     instancedMesh.instanceMatrix.needsUpdate = true;
     if (instancedMesh.instanceColor) {
       instancedMesh.instanceColor.needsUpdate = true;
+    }
+    if (ringMesh) {
+      ringMesh.instanceMatrix.needsUpdate = true;
+      if (ringMesh.instanceColor) {
+        ringMesh.instanceColor.needsUpdate = true;
+      }
     }
   }, [earthquakes]);
 

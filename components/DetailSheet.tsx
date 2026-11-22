@@ -106,11 +106,14 @@ export default function DetailSheet({
           {isEq && (
             <>
               <div className="flex items-center gap-4 p-4 rounded-2xl bg-[var(--glass-hover)] border border-[var(--border-glass)]">
-                <div className="text-3xl font-display font-bold" style={getMagBadgeStyle(selectedEntity.data.mag)}>
-                  {selectedEntity.data.mag.toFixed(1)}
+                <div 
+                  className="min-w-[56px] h-[56px] px-3.5 py-1 rounded-2xl border flex items-center justify-center font-display font-bold text-2xl shadow-sm shrink-0" 
+                  style={getMagBadgeStyle(selectedEntity.data.mag)}
+                >
+                  <span>{selectedEntity.data.mag.toFixed(1)}</span>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-[var(--text-primary)]">Magnitudo {getMagSeverity(selectedEntity.data.mag)}</p>
+                  <p className="text-xs font-bold text-[var(--text-primary)]">Magnitudo {getMagSeverity(selectedEntity.data.mag)}</p>
                   <p className="text-[10px] text-[var(--text-secondary)]">Skala Moment (Mw)</p>
                 </div>
               </div>
