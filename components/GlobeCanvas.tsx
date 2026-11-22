@@ -277,10 +277,12 @@ export default function GlobeCanvas({
     // Pre-allocate InstancedMesh for Earthquake Pulse Rings (Cincin Riak Berdenyut di Episentrum)
     const pinRingGeo = new THREE.RingGeometry(0.04, 0.085, 18);
     const ringPhases = new Float32Array(MAX_EARTHQUAKES);
+    const ringColors = new Float32Array(MAX_EARTHQUAKES * 3);
     for (let i = 0; i < MAX_EARTHQUAKES; i++) {
       ringPhases[i] = (i * 0.23) % 1.0;
     }
     pinRingGeo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(ringPhases, 1));
+    pinRingGeo.setAttribute("aRingColor", new THREE.InstancedBufferAttribute(ringColors, 3));
 
     const eqRingMat = new THREE.ShaderMaterial({
       side: THREE.DoubleSide,
@@ -293,11 +295,12 @@ export default function GlobeCanvas({
       },
       vertexShader: `
         attribute float aPhase;
+        attribute vec3 aRingColor;
         uniform float uTime;
         varying vec3 vColor;
         varying float vAlpha;
         void main() {
-          vColor = instanceColor;
+          vColor = aRingColor;
           float cycle = fract(uTime * 0.55 + aPhase);
           float expand = 1.0 + cycle * 2.8;
           vec3 pos = vec3(position.x * expand, position.y * expand, position.z);
@@ -538,10 +541,13 @@ export default function GlobeCanvas({
       RAY_MOUSE.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(RAY_MOUSE, camera);
 
-      // Collect test targets that are active and visible
+      // Collect test targets that are active and visible (termasuk cincin riak & footprint agar mudah diklik)
       const testObjects: THREE.Object3D[] = [];
       if (eqInstancedMeshRef.current && layersRef.current.earthquakes) {
         testObjects.push(eqInstancedMeshRef.current);
+      }
+      if (eqRingInstancedMeshRef.current && layersRef.current.earthquakes) {
+        testObjects.push(eqRingInstancedMeshRef.current);
       }
       if (hubInstancedMeshRef.current && layersRef.current.routes) {
         testObjects.push(hubInstancedMeshRef.current);
@@ -549,13 +555,19 @@ export default function GlobeCanvas({
       if (issGroupRef.current && layersRef.current.iss) {
         testObjects.push(issGroupRef.current);
       }
+      if (issFootprintRef.current && layersRef.current.iss) {
+        testObjects.push(issFootprintRef.current);
+      }
 
       const intersects = raycaster.intersectObjects(testObjects, true);
       if (intersects.length > 0) {
         const hit = intersects[0];
 
-        // 1. Earthquake Hit
-        if (hit.object === eqInstancedMeshRef.current && hit.instanceId !== undefined) {
+        // 1. Earthquake Hit (baik silinder pilar maupun cincin riak episentrum)
+        if (
+          (hit.object === eqInstancedMeshRef.current || hit.object === eqRingInstancedMeshRef.current) &&
+          hit.instanceId !== undefined
+        ) {
           const eq = earthquakesRef.current[hit.instanceId];
           if (eq) {
             onSelectEntityRef.current({ type: "earthquake", data: eq });
@@ -572,7 +584,12 @@ export default function GlobeCanvas({
           }
         }
 
-        // 3. ISS Hit
+        // 3. ISS Hit (badan satelit maupun cincin proyeksi footprint)
+        if (hit.object === issFootprintRef.current && issRef.current) {
+          onSelectEntityRef.current({ type: "iss", data: issRef.current });
+          return;
+        }
+
         let parent: THREE.Object3D | null = hit.object;
         while (parent && parent !== scene) {
           if (parent === issGroupRef.current && issRef.current) {
@@ -599,11 +616,17 @@ export default function GlobeCanvas({
       if (eqInstancedMeshRef.current && layersRef.current.earthquakes) {
         testObjects.push(eqInstancedMeshRef.current);
       }
+      if (eqRingInstancedMeshRef.current && layersRef.current.earthquakes) {
+        testObjects.push(eqRingInstancedMeshRef.current);
+      }
       if (hubInstancedMeshRef.current && layersRef.current.routes) {
         testObjects.push(hubInstancedMeshRef.current);
       }
       if (issGroupRef.current && layersRef.current.iss) {
         testObjects.push(issGroupRef.current);
+      }
+      if (issFootprintRef.current && layersRef.current.iss) {
+        testObjects.push(issFootprintRef.current);
       }
 
       const hits = raycaster.intersectObjects(testObjects, true);
@@ -987,7 +1010,11 @@ export default function GlobeCanvas({
         Q_ROT.setFromUnitVectors(V_FORWARD_Z, V_NORMAL);
         M_TRANSFORM.compose(V_RING_POS, Q_ROT, V_SCALE_ONE);
         ringMesh.setMatrixAt(i, M_TRANSFORM);
-        ringMesh.setColorAt(i, C_COLOR);
+
+        const colorAttr = ringMesh.geometry.getAttribute("aRingColor") as THREE.InstancedBufferAttribute | undefined;
+        if (colorAttr) {
+          C_COLOR.toArray(colorAttr.array, i * 3);
+        }
       }
     }
 
@@ -997,8 +1024,9 @@ export default function GlobeCanvas({
     }
     if (ringMesh) {
       ringMesh.instanceMatrix.needsUpdate = true;
-      if (ringMesh.instanceColor) {
-        ringMesh.instanceColor.needsUpdate = true;
+      const colorAttr = ringMesh.geometry.getAttribute("aRingColor");
+      if (colorAttr) {
+        colorAttr.needsUpdate = true;
       }
     }
   }, [earthquakes]);
